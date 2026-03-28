@@ -1,0 +1,62 @@
+name: tft-arena-dev
+
+# Usage: docker compose -f docker-compose.dev.yml watch
+# Auto-syncs file changes into containers:
+#   Backend: Python files → /app (uvicorn --reload picks them up)
+#   Frontend: src/ and public/ → /app/... (Vite HMR picks them up)
+#   Both: Rebuild image if pyproject.toml / package.json change
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+    environment:
+      # SQLite paths — stored in Docker volumes so they persist across restarts
+      - DATABASE_URL=sqlite:////data/tft_arena.db
+      - LANGMEM_CHROMA_PATH=/data/chromadb
+      # Ollama on host machine — Docker Desktop resolves this automatically.
+      # Override with OLLAMA_BASE_URL in .env for remote Ollama setups.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      - tft_arena_data:/data
+    # Makes host.docker.internal work on Linux Docker Engine too
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    develop:
+      watch:
+        # Sync Python source without rebuilding the image
+        - action: sync
+          path: ./backend/app
+          target: /app/app
+        # Rebuild if dependencies change
+        - action: rebuild
+          path: ./backend/requirements.txt
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    develop:
+      watch:
+        # Sync React/TS source — Vite HMR updates the browser instantly
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        # Rebuild if dependencies change
+        - action: rebuild
+          path: ./frontend/package.json
+
+volumes:
+  tft_arena_data:
+    driver: local

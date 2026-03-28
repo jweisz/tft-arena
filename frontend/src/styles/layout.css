@@ -1,0 +1,49 @@
+/* src/styles/layout.css: Structural CSS */
+
+.app-container {
+  display: grid;
+  grid-template-columns: 250px 1fr 300px;
+  grid-template-rows: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-container > * {
+  min-height: 0;
+}
+
+.nav-sidebar {
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-main {
+  background-color: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.agents-sidebar {
+  background-color: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Common Chat Elements */
+.chat-messages {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.chat-input-area {
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}

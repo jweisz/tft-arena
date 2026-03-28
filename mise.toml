@@ -1,0 +1,71 @@
+[tools]
+# No language version pinning needed — uses system Python + Node
+
+[env]
+# Load .env if it exists (mise auto-loads .env files)
+_.file = ".env"
+
+# ─────────────────────────────────────────────
+# mise tasks — run with: mise run <task>
+# ─────────────────────────────────────────────
+
+# ── Environment setup ─────────────────────────
+
+[tasks.init]
+description = "Copy .env.example → .env (asks before overwriting)"
+run = """
+if [ -f .env ]; then
+  printf '.env already exists. Overwrite? [y/N] '
+  read answer
+  case "$answer" in
+    [yY]*) ;;
+    *) echo "Skipped."; exit 0 ;;
+  esac
+fi
+cp .env.example .env
+echo "✔  .env created. Fill in your values before starting the app."
+"""
+
+# ── Local dev (no Docker) ─────────────────────
+
+[tasks.app-backend]
+description = "Start the FastAPI backend locally (hot-reload)"
+dir = "backend"
+run = """
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+"""
+
+[tasks.app-frontend]
+description = "Start the Vite dev server locally"
+dir = "frontend"
+run = "npm run dev"
+
+[tasks.app]
+description = "Start backend + frontend locally (runs both in parallel)"
+depends = ["app-backend", "app-frontend"]
+run = "echo 'Both servers started.'"
+
+# ── Docker ────────────────────────────────────
+
+[tasks.docker-dev]
+description = "Start all services in Docker with hot-reload (compose watch)"
+run = "docker compose -f docker-compose.dev.yml watch"
+
+[tasks.docker-prod]
+description = "Start all services in Docker (production build)"
+run = "docker compose -f docker-compose.yml up --build"
+
+[tasks.docker-down]
+description = "Stop and remove all Docker containers"
+run = "docker compose -f docker-compose.dev.yml down"
+
+# ── Tests ─────────────────────────────────────
+
+[tasks.test]
+description = "Run the backend Python test suite"
+dir = "backend"
+run = """
+source .venv/bin/activate
+python -m pytest tests/ -v
+"""
