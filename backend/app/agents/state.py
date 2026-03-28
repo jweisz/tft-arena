@@ -48,6 +48,7 @@ class ArenaState(TypedDict):
     telemetry: Annotated[List[TelemetryEntry], operator.add]
     mentions: List[str]  # Names of the agents specifically tagged with @
     agent_scores: Dict[str, float]  # Scores calculated by the importance evaluator
+    agent_reasons: Dict[str, str]   # Short reasoning text per agent from the router
 
     room_id: int
     turn_number: int

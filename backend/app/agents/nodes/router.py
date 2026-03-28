@@ -5,16 +5,17 @@ from ..state import ArenaState
 from ...core.llm import get_llm
 
 # Turns replenished to each agent's budget when the user sends a message
-BUDGET_REPLENISH_AMOUNT = 5
+BUDGET_REPLENISH_AMOUNT = 3
 # Minimum score (0-10) for an agent to participate in a turn
 PARTICIPATION_THRESHOLD = 3.0
 
-async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, Any]]) -> Dict[str, float]:
+async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, Any]]) -> tuple[Dict[str, float], Dict[str, str]]:
     """
     Uses a fast LLM to rank the relevance of each agent to the current conversation.
-    Returns a mapping of agent_name -> score (0-10).
+    Returns (scores, reasons): both keyed by agent_name.
+    scores: 0-10 float, reasons: one-sentence explanation.
     """
-    if not agents: return {}
+    if not agents: return {}, {}
     
     # Context window: Use the last 5 messages to provide thematic flow.
     recent_msgs = messages[-5:]
@@ -26,7 +27,9 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
     
     prompt = f"""
     You are a conversation moderator for an AI Arena.
-    Your goal is to ensure a high-quality, focused discussion by selecting the most relevant agents for the next turn.
+    Your goal is to ensure a high-quality discussion by selecting the most relevant agents for the next turn.
+
+    **CRITICAL**: If the human asks a question or makes a statement, SOMEONE must be the best candidate to respond. Do not leave the user hanging unless the message is completely nonsensical.
 
     CONVERSATION HISTORY (Last 5 messages):
     {history_context}
@@ -35,10 +38,10 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
     {agent_context}
 
     DISTRIBUTIONAL GOAL:
-    - Ideally, mark only the 2-3 most relevant agents with high scores.
-    - Be discriminating. Most agents should score low (0-2) unless they have a direct reason to contribute.
-    - An agent scores HIGH (10) only if they are directly addressed or their persona perfectly matches the current topic.
-    - An agent scores LOW (0-2) if they would only provide "noise" or generic filler.
+    - Ideally, mark the 1-3 most relevant agents with high scores.
+    - Be discriminating, but don't be afraid to score an agent above 3.0 if they are even moderately helpful.
+    - An agent scores HIGH (10) if they are directly addressed or their persona is an expert match.
+    - An agent scores LOW (0-2) only if they are clearly irrelevant or would provide noise.
 
     SCORING SCALE:
     - 0-2: Irrelevant / Generic listener.
@@ -46,8 +49,12 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
     - 6-8: Strongly relevant / Core to the current thread.
     - 9-10: Perfect thematic match / Directly mentioned.
 
-    Return ONLY a valid JSON object where keys are agent names and values are numerical scores.
-    Example: {{"Devil's Advocate": 1.5, "Muse": 8.0}}
+    Return ONLY a valid JSON object with two keys:
+    - "scores": object mapping agent names to numerical scores (0-10)
+    - "reasons": object mapping agent names to a single short sentence (max 12 words) explaining why they scored that way
+
+    Example:
+    {{"scores": {{"Devil's Advocate": 1.5, "Muse": 8.0}}, "reasons": {{"Devil's Advocate": "Topic is factual, not suited to contrarian debate.", "Muse": "Creative framing directly matches the question asked."}}}}
     """
     
     try:
@@ -59,14 +66,16 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
         raw_content = response.content.strip()
         if raw_content.startswith("```json"):
             raw_content = raw_content[7:-3].strip()
-        if raw_content.startswith("{"): # Ensure it's valid JSON start
-            scores = json.loads(raw_content)
-            return {name: float(score) for name, score in scores.items()}
+        if raw_content.startswith("{"):
+            parsed = json.loads(raw_content)
+            scores = {name: float(score) for name, score in parsed.get("scores", {}).items()}
+            reasons = {name: str(reason) for name, reason in parsed.get("reasons", {}).items()}
+            return scores, reasons
     except Exception as e:
         print(f"Warning: Speaker importance evaluation failed: {e}")
         
     # Default to a low 'noise floor' on error to prevent flooding.
-    return {a["name"]: 1.0 for a in agents}
+    return {a["name"]: 1.0 for a in agents}, {a["name"]: "Routing evaluation failed." for a in agents}
 
 
 async def router_node(state: ArenaState) -> Dict[str, Any]:
@@ -84,6 +93,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     agent_budgets: Dict[str, int] = dict(state.get("agent_budgets", {}))
     agent_statuses: Dict[str, str] = dict(state.get("agent_statuses", {}))
     agent_scores: Dict[str, float] = {}
+    agent_reasons: Dict[str, str] = {}
     turn = state.get("turn_number", 0)
 
     # --- Initialize for any new agents ---
@@ -100,7 +110,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
             "next_speakers": [], 
             "agent_budgets": agent_budgets, 
             "agent_statuses": agent_statuses,
-            "agent_scores": {}
+            "agent_scores": {},
+            "agent_reasons": {},
         }
 
     # --- Interruption ---
@@ -111,15 +122,17 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
             "interrupted": False, 
             "agent_budgets": agent_budgets, 
             "agent_statuses": agent_statuses,
-            "agent_scores": {}
+            "agent_scores": {},
+            "agent_reasons": {},
         }
 
     if not messages:
-        return {"next_speakers": [], "agent_budgets": agent_budgets, "agent_statuses": agent_statuses, "agent_scores": {}}
+        return {"next_speakers": [], "agent_budgets": agent_budgets, "agent_statuses": agent_statuses, "agent_scores": {}, "agent_reasons": {}}
 
     last_msg = messages[-1]
     next_speakers = []
 
+    # --- Step 1: Handle Replenishment & Mentions (Human Only) ---
     if last_msg.type == "human":
         # Replenish budgets when last message is from human
         for agent in active_agents:
@@ -128,68 +141,83 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
                 agent["token_budget"]
             )
         
-        # --- Handle @Mention Override ---
+        # Handle @Mention Override
         mentions = state.get("mentions", [])
         if mentions:
-            # Check which mentioned agents are active
             active_mentioned = [name for name in mentions if any(a["name"] == name for a in active_agents)]
             if active_mentioned:
                 next_speakers = active_mentioned
-                # Ensure each has at least 1 turn for the direct response
-                # and turn off thinking status for non-mentioned
                 for agent in active_agents:
                     if agent["name"] in active_mentioned:
                         agent_budgets[agent["name"]] = max(agent_budgets.get(agent["name"], 0), 1)
                         agent_statuses[agent["name"]] = "Thinking"
-                        agent_scores[agent["name"]] = 10.0 # Perfect relevance for direct mentions
+                        agent_scores[agent["name"]] = 10.0
+                        agent_reasons[agent["name"]] = "Directly mentioned by the user."
                     else:
                         agent_statuses[agent["name"]] = "Idle"
                         agent_scores[agent["name"]] = 0.0
+                        agent_reasons[agent["name"]] = "Not directly mentioned."
                 
                 return {
                     "next_speakers": next_speakers,
                     "agent_budgets": agent_budgets,
                     "agent_statuses": agent_statuses,
                     "agent_scores": agent_scores,
+                    "agent_reasons": agent_reasons,
                     "turn_number": turn + 1,
-                    "mentions": [] # Clear for next turn
+                    "mentions": []
                 }
 
-        # Standard selection logic (Legacy-ish but now with Intelligence)
-        candidates = []
-        for agent in active_agents:
-            if agent_budgets.get(agent["name"], 0) > 0:
-                candidates.append(agent)
+    # --- Step 2: Scoring & Candidate Selection (Human & AI) ---
+    candidates = [a for a in active_agents if agent_budgets.get(a["name"], 0) > 0]
+    
+    # Avoid an agent responding immediately to itself (cross-talk prevention)
+    if last_msg.type == "ai":
+        candidates = [a for a in candidates if a["name"] != last_msg.name]
 
-        if not candidates:
-            return {"next_speakers": [], "agent_budgets": agent_budgets, "agent_statuses": agent_statuses, "agent_scores": {}}
+    if not candidates:
+        return {
+            "next_speakers": [], 
+            "agent_budgets": agent_budgets, 
+            "agent_statuses": agent_statuses, 
+            "agent_scores": {},
+            "agent_reasons": {},
+            "turn_number": turn + (1 if last_msg.type == "human" else 0)
+        }
 
-        # --- Evaluate Importance and Sort ---
-        scores = await eval_speaker_importance(messages, candidates)
-        agent_scores = scores
-        
-        # Sort candidates by score descending
-        sorted_candidates = sorted(candidates, key=lambda a: scores.get(a["name"], 0), reverse=True)
-        
-        # Filter: If an agent's score is too low, skip them
-        next_speakers = [
-            a["name"] for a in sorted_candidates 
-            if scores.get(a["name"], 0) >= PARTICIPATION_THRESHOLD
-        ]
-        
-        for name in next_speakers:
-            agent_statuses[name] = "Thinking"
-        for agent in active_agents:
-            if agent["name"] not in next_speakers:
-                agent_statuses[agent["name"]] = "Idle"
-    else:
-        # If last message was from an agent, others might still be Idle or Thinking
-        pass
+    # Evaluate Importance and Sort
+    scores, reasons = await eval_speaker_importance(messages, candidates)
+    agent_scores = scores
+    agent_reasons = reasons
+    
+    # Sort candidates by score descending
+    sorted_candidates = sorted(candidates, key=lambda a: scores.get(a["name"], 0), reverse=True)
+    
+    # Filter by threshold
+    next_speakers = [
+        a["name"] for a in sorted_candidates 
+        if scores.get(a["name"], 0) >= PARTICIPATION_THRESHOLD
+    ]
+    
+    # Fallback: 'Winner Takes All' (ensure at least 1 speaker if generic prompt)
+    if not next_speakers and sorted_candidates:
+        top_agent = sorted_candidates[0]
+        if scores.get(top_agent["name"], 0) >= 1.0:
+            next_speakers = [top_agent["name"]]
+            agent_scores[top_agent["name"]] = max(agent_scores.get(top_agent["name"], 0), PARTICIPATION_THRESHOLD)
+    
+    # Set status for next speakers
+    for name in next_speakers:
+        agent_statuses[name] = "Thinking"
+    for agent in active_agents:
+        if agent["name"] not in next_speakers:
+            agent_statuses[agent["name"]] = "Idle"
 
     return {
         "next_speakers": next_speakers,
         "agent_budgets": agent_budgets,
         "agent_statuses": agent_statuses,
         "agent_scores": agent_scores,
-        "turn_number": turn + 1,
+        "agent_reasons": agent_reasons,
+        "turn_number": turn + 1 if last_msg.type == "human" else turn,
     }

@@ -10,7 +10,7 @@ export type WSEvent =
   | { type: 'error'; error: string }
   | { type: 'telemetry'; data: any[]; budgets: Record<string, number> }
   | { type: 'semantic'; annotations: any[]; scratchpad: any }
-  | { type: 'status_update'; statuses: Record<string, string>; scores?: Record<string, number> }
+  | { type: 'status_update'; statuses: Record<string, string>; scores?: Record<string, number>; reasons?: Record<string, string> }
 
 interface UseArenaSocketOptions {
   roomId: number
@@ -37,6 +37,9 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
           })
           if (data.scores) {
             setAgentScores(data.scores)
+          }
+          if (data.reasons) {
+            useUIStore.getState().setAgentReasons(data.reasons)
           }
         }
         if (data.type === 'telemetry' && data.data.length > 0) {

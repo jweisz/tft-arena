@@ -32,7 +32,6 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
     streamingAgents, 
     agentStatuses, 
     agentBudgets,
-    agentScores
   } = useUIStore()
   const hasContent = scratchpad && (scratchpad.consensus || scratchpad.open_questions.length > 0 || scratchpad.key_ideas.length > 0)
   const [agents, setAgents] = useState<Agent[]>([])
@@ -60,6 +59,21 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
     setLoading(true)
     try {
       const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents/${agentId}/toggle`, {
+        method: 'POST'
+      })
+      if (res.ok) {
+        await fetchAgents()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const bulkActiveAgents = async (active: boolean) => {
+    if (!roomId || loading) return
+    setLoading(true)
+    try {
+      const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents/bulk-active?active=${active}`, {
         method: 'POST'
       })
       if (res.ok) {
@@ -101,6 +115,26 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
           <h3 style={{ margin: 0, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
             Agent Roster
           </h3>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <button 
+              onClick={(e) => { e.stopPropagation(); bulkActiveAgents(true); }}
+              disabled={loading}
+              style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+              onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            >
+              ALL
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); bulkActiveAgents(false); }}
+              disabled={loading}
+              style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+              onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            >
+              NONE
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
@@ -146,38 +180,38 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
                             <span style={{ fontSize: '0.85rem', fontWeight: isActive ? 'bold' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {agent.name}
                             </span>
-                            <span style={{ fontSize: '0.65rem', color: getStatusColor(status === 'Idle' && agentScores[agent.name] !== undefined && agentScores[agent.name] < 3 ? 'Skipped' : status), fontWeight: 'bold', textTransform: 'uppercase' }}>
-                                {status === 'Idle' && agentScores[agent.name] !== undefined && agentScores[agent.name] < 3 ? 'Skipped' : status}
+                            <span style={{ fontSize: '0.65rem', color: getStatusColor(status), fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                {status}
                             </span>
                         </div>
                         {isActive && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.1rem' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.7rem', color: currentBudget > 0 ? 'var(--text-secondary)' : '#ef4444' }}>
-                                        {currentBudget} turn{currentBudget !== 1 ? 's' : ''} left
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                        Participation: {Math.round(activityPercent)}%
                                     </span>
-                                    {agentScores[agent.name] !== undefined && (
-                                        <span style={{ fontSize: '0.65rem', color: agentScores[agent.name] >= 3 ? 'var(--accent-color)' : 'var(--text-secondary)', fontWeight: '500' }}>
-                                            Relevance: {Math.round(agentScores[agent.name] * 10)}%
-                                        </span>
-                                    )}
                                 </div>
-                                <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
-                                    Activity: {Math.round(activityPercent)}%
-                                </span>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {isActive && (
-                  <div style={{ width: '100%', height: '3px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ 
-                      height: '100%', 
-                      width: `${activityPercent}%`, 
-                      backgroundColor: 'var(--accent-color)', // Highlight activity share
-                      transition: 'width 0.4s ease'
-                    }} />
+                  <div style={{ display: 'flex', gap: '2px', width: '100%', height: '4px', marginTop: '0.2rem' }}>
+                    {Array.from({ length: agent.token_budget }).map((_, i) => {
+                      const isFilled = i < currentBudget
+                      return (
+                        <div 
+                          key={i} 
+                          style={{ 
+                            flex: 1, 
+                            backgroundColor: isFilled ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)', 
+                            borderRadius: '1px',
+                            transition: 'background-color 0.3s ease'
+                          }} 
+                        />
+                      )
+                    })}
                   </div>
                 )}
               </div>

@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage
 from ..models import schema
 from ..models.db import get_db
 from ..core.websockets import manager
+from ..core.utils import sanitize_agent_content
 from ..agents.graph import build_graph
 from ..api.control import emergency_flags
 from ..agents.nodes.semantic import run_semantic_agent
@@ -145,11 +146,52 @@ async def websocket_endpoint(
                                 await manager.send_json_to_room({
                                     "type": "status_update",
                                     "statuses": final_output["agent_statuses"],
-                                    "scores": final_output.get("agent_scores", {})
+                                    "scores": final_output.get("agent_scores", {}),
+                                    "reasons": final_output.get("agent_reasons", {}),
                                 }, room_id)
                         elif node_name.startswith("agent_node"):
-                            # Logic for agent_node end (currently handled in agent_node itself)
-                            pass
+                            final_output = event.get("data", {}).get("output", {})
+                            if final_output:
+                                new_budgets = final_output.get("agent_budgets", {})
+                                agent_budgets.update(new_budgets)
+                                telemetry = final_output.get("telemetry", [])
+                                
+                                # --- Persist this utterance to DB ---
+                                if telemetry:
+                                    agent_name = tel["agent_name"]
+                                    raw_content = agent_outputs.get(agent_name, "")
+                                    content = sanitize_agent_content(raw_content, agent_name)
+                                    
+                                    if content.strip():
+                                        agent_db = db.query(schema.Agent).filter(
+                                            schema.Agent.name == agent_name
+                                        ).first()
+                                        db.add(schema.Message(
+                                            room_id=room_id,
+                                            role="agent",
+                                            content=content,
+                                            agent_id=agent_db.id if agent_db else None,
+                                            tokens_used=tel.get("tokens_used", 0),
+                                            latency_ms=tel.get("latency_ms", 0.0),
+                                        ))
+                                        db.commit()
+                                        
+                                        # Clear output for next potential turn of this agent
+                                        agent_outputs[agent_name] = ""
+
+                                        # Broadcast Turn completion events
+                                        await manager.send_json_to_room({
+                                            "type": "telemetry",
+                                            "data": telemetry,
+                                            "budgets": agent_budgets,
+                                        }, room_id)
+                                        
+                                        await manager.send_json_to_room({
+                                            "type": "activity_stats",
+                                            "stats": _get_activity_stats(room_id, db)
+                                        }, room_id)
+
+                                        await manager.send_json_to_room({"type": "done"}, room_id)
 
                     if kind == "on_chat_model_stream":
                         chunk = event["data"]["chunk"]
@@ -161,44 +203,6 @@ async def websocket_endpoint(
                             "agent": agent_name,
                             "token": token,
                         }, room_id)
-
-                    elif kind == "on_chain_end" and event.get("name") == "LangGraph":
-                        final_output = event.get("data", {}).get("output", {})
-                        if final_output:
-                            new_budgets = final_output.get("agent_budgets", {})
-                            agent_budgets.update(new_budgets)
-                            telemetry = final_output.get("telemetry", [])
-
-                            # --- Persist agent messages to DB ---
-                            tel_map = {t["agent_name"]: t for t in telemetry}
-                            agent_lookup = {a["name"]: a for a in active_agents}
-                            for agent_name, content in agent_outputs.items():
-                                if content.strip():
-                                    tel = tel_map.get(agent_name, {})
-                                    agent_db = db.query(schema.Agent).filter(
-                                        schema.Agent.name == agent_name
-                                    ).first()
-                                    db.add(schema.Message(
-                                        room_id=room_id,
-                                        role="agent",
-                                        content=content,
-                                        agent_id=agent_db.id if agent_db else None,
-                                        tokens_used=tel.get("tokens_used", 0),
-                                        latency_ms=tel.get("latency_ms", 0.0),
-                                    ))
-                            db.commit()
-                            agent_outputs = {}
-
-                            await manager.send_json_to_room({
-                                "type": "telemetry",
-                                "data": telemetry,
-                                "budgets": agent_budgets,
-                            }, room_id)
-                            
-                            await manager.send_json_to_room({
-                                "type": "activity_stats",
-                                "stats": _get_activity_stats(room_id, db)
-                            }, room_id)
 
                 await manager.send_json_to_room({"type": "done"}, room_id)
 

@@ -7,6 +7,8 @@ from ..state import TelemetryEntry
 from ..context import maybe_summarize
 from ..memory import retrieve_agent_memories, retrieve_user_profile, store_agent_memory
 
+from ...core.utils import sanitize_agent_content
+
 async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes a single agent's inference with sequential speaking enforcement.
@@ -56,9 +58,12 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 f"ROLE PROFILE:\n{agent['role_description']}\n\n"
                 f"PERSONA INSTRUCTION:\n{agent['system_prompt']}\n\n"
                 f"CORE CHAT PROTOCOL:\n"
+                f"- SPEAK ONLY AS YOURSELF ({agent['name']}).\n"
+                f"- DO NOT write lines, dialogue, or reactions for any other agent.\n"
+                f"- PROVIDE EXACTLY ONE UTTERANCE. Do not simulate a conversation.\n"
+                f"- STOP IMMEDIATELY after your own point is made.\n"
                 f"- DO NOT prefix your response with your name or any label (e.g., '{agent['name']}:').\n"
-                f"- Start your response directly with the content of your message.\n"
-                f"- Maintain your assigned persona without explicitly stating it."
+                f"- Start your response directly with the content of your message."
             )
             
             if global_instr:
@@ -79,6 +84,9 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
             )
             elapsed_ms = (time.perf_counter() - start) * 1000
             
+            # --- Sanitize Response Content ---
+            clean_content = sanitize_agent_content(response.content, agent["name"])
+            
     except Exception as e:
         print(f"Error in agent_node for {agent['name']}: {e}")
         return {} # Early exit, finally will reset status
@@ -92,7 +100,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # --- BELOW TASKS RUN OUTSIDE THE ROOM LOCK TO AVOID HANGS ---
     try:
         tokens_used = getattr(response, "usage_metadata", {}) or {}
-        tokens_used = tokens_used.get("output_tokens", len(response.content.split()))
+        tokens_used = tokens_used.get("output_tokens", len(clean_content.split()))
 
         # Deduct 1 TURN from budget
         current_budget = agent_budgets.get(agent["name"], 0)
@@ -104,7 +112,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "budgets": new_budgets
         }, room_id)
 
-        ai_msg = AIMessage(content=response.content, name=agent["name"])
+        ai_msg = AIMessage(content=clean_content, name=agent["name"])
 
         telemetry_entry: TelemetryEntry = {
             "agent_name": agent["name"],
@@ -115,7 +123,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
         # Background: store memory
         try:
-            await store_agent_memory(room_id, agent["name"], response.content[:500])
+            await store_agent_memory(room_id, agent["name"], clean_content[:500])
         except Exception:
             pass
 

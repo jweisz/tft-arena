@@ -30,6 +30,8 @@ interface UIState {
   agentScores: Record<string, number>;
   setAgentScores: (scores: Record<string, number>) => void;
   updateAgentScore: (agentName: string, score: number) => void;
+  agentReasons: Record<string, string>;
+  setAgentReasons: (reasons: Record<string, string>) => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -78,4 +80,6 @@ export const useUIStore = create<UIState>()((set) => ({
   updateAgentScore: (agentName, score) => set((state) => ({
     agentScores: { ...state.agentScores, [agentName]: score }
   })),
+  agentReasons: {},
+  setAgentReasons: (agentReasons) => set({ agentReasons }),
 }))

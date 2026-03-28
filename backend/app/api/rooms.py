@@ -13,6 +13,14 @@ def create_room(room_in: pydantic_models.RoomCreate, db: Session = Depends(get_d
     db.add(db_room)
     db.commit()
     db.refresh(db_room)
+    
+    # Auto-associate all global agents as active
+    all_agents = db.query(schema.Agent).all()
+    for agent in all_agents:
+        room_agent = schema.RoomAgent(room_id=db_room.id, agent_id=agent.id, is_active=True)
+        db.add(room_agent)
+    
+    db.commit()
     return db_room
 
 @router.get("/", response_model=List[pydantic_models.RoomResponse])
@@ -109,3 +117,26 @@ def toggle_room_agent(room_id: int, agent_id: int, db: Session = Depends(get_db)
         
     db.commit()
     return {"message": "Toggled", "is_active": mapping.is_active}
+
+@router.post("/{room_id}/agents/bulk-active")
+def bulk_active_room_agents(room_id: int, active: bool, db: Session = Depends(get_db)):
+    """Sets all agents' active status in a room."""
+    room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    all_agents = db.query(schema.Agent).all()
+    for agent in all_agents:
+        mapping = db.query(schema.RoomAgent).filter(
+            schema.RoomAgent.room_id == room_id,
+            schema.RoomAgent.agent_id == agent.id
+        ).first()
+        
+        if mapping:
+            mapping.is_active = active
+        else:
+            mapping = schema.RoomAgent(room_id=room_id, agent_id=agent.id, is_active=active)
+            db.add(mapping)
+            
+    db.commit()
+    return {"message": f"All agents set to {'active' if active else 'inactive'}"}

@@ -48,7 +48,7 @@ def build_graph():
         ["agent_node", END]
     )
 
-    # Return to END to wait for next human input
-    builder.add_edge("agent_node", END)
+    # Return to router to allow for autonomous agent-to-agent interactions
+    builder.add_edge("agent_node", "router")
 
     return builder.compile()

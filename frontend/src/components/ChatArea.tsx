@@ -15,6 +15,11 @@ interface ChatMessage {
   isInterrupted?: boolean
 }
 
+interface RelevanceSnapshot {
+  scores: Record<string, number>
+  reasons: Record<string, string>
+}
+
 interface ScratchpadState {
   consensus: string
   open_questions: string[]
@@ -29,6 +34,12 @@ export const ChatArea: React.FC<{
   onTelemetryUpdate?: (data: any[], budgets: Record<string, number>) => void
 }> = ({ roomId, onScratchpadUpdate, onTelemetryUpdate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  // Per human-message relevance snapshot: msgId -> { scores, reasons }
+  const [relevanceMap, setRelevanceMap] = useState<Record<string, RelevanceSnapshot>>({})
+  // Tracks the ID of the last human message sent
+  const lastHumanMsgIdRef = useRef<string | null>(null)
+  // Tooltip state
+  const [tooltip, setTooltip] = useState<{ visible: boolean; text: string; x: number; y: number }>({ visible: false, text: '', x: 0, y: 0 })
   const { 
     streamingAgents, 
     updateStreamingAgents, 
@@ -48,6 +59,15 @@ export const ChatArea: React.FC<{
         Object.entries(event.statuses).forEach(([agent, status]) => {
           updateAgentStatus(agent, status as any)
         })
+        // Snapshot scores+reasons and attach to the last human message
+        if (event.scores && Object.keys(event.scores).length > 0 && lastHumanMsgIdRef.current) {
+          const msgId = lastHumanMsgIdRef.current
+          const snapshot: RelevanceSnapshot = {
+            scores: event.scores,
+            reasons: event.reasons ?? {},
+          }
+          setRelevanceMap(prev => ({ ...prev, [msgId]: snapshot }))
+        }
         break
       }
       case 'budget_update': {
@@ -186,8 +206,10 @@ export const ChatArea: React.FC<{
       ))
       updateStreamingAgents(new Set())
     }
+    const msgId = `human-${Date.now()}`
+    lastHumanMsgIdRef.current = msgId
     setMessages(prev => [...prev, {
-      id: `human-${Date.now()}`,
+      id: msgId,
       role: 'human',
       content: text,
     }])
@@ -206,34 +228,133 @@ export const ChatArea: React.FC<{
     margin: '0.3rem 0 0 0'
   }
 
-  return (
-    <main className="chat-main">
+    const cleanContent = (text: string, agentName?: string) => {
+      if (!agentName || !text) return text
+      // Escaping for regex
+      const escapedName = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const patterns = [
+        new RegExp(`^\\s*["']?${escapedName}[:\\-\\s—]+\\s*["']?`, 'i'),
+        /^\s*["']?Agent[:\\-\\s—]+\\s*["']?/i,
+        /^\s*["']?Response[:\\-\\s—]+\s*["']?/i,
+      ]
+      let sanitized = text.trim()
+      patterns.forEach(p => { sanitized = sanitized.replace(p, '').trim() })
+      
+      // Strip surrounding quotes if they wrap the whole thing
+      if ((sanitized.startsWith('"') && sanitized.endsWith('"')) || 
+          (sanitized.startsWith("'") && sanitized.endsWith("'"))) {
+        sanitized = sanitized.slice(1, -1).trim()
+      }
+      return sanitized
+    }
 
-      <div className="chat-messages" ref={scrollRef}>
-        {messages.map(msg => (
-          <div key={msg.id} style={{ marginBottom: '1.5rem', opacity: msg.isInterrupted ? 0.6 : 1 }}>
-            <span style={{
-              fontWeight: 'bold',
-              fontSize: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: roleColor(msg.role),
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              marginBottom: '0.2rem'
-            }}>
-              {msg.role === 'human' ? 'You' : msg.agentName || 'System'}
-              {msg.isStreaming && <span style={{ animation: 'pulse 0.8s infinite' }}>▌</span>}
-            </span>
-            
-            <div style={markdownStyles}>
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
-            </div>
-            
+    const THRESHOLD = 3.0
+
+    return (
+      <main className="chat-main">
+        {/* Floating Tooltip */}
+        {tooltip.visible && (
+          <div style={{
+            position: 'fixed',
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: 'translateX(-50%) translateY(-100%)',
+            marginTop: '-8px',
+            backgroundColor: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            padding: '0.4rem 0.7rem',
+            fontSize: '0.75rem',
+            color: 'var(--text-primary)',
+            maxWidth: '220px',
+            whiteSpace: 'normal',
+            lineHeight: '1.4',
+            zIndex: 9999,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}>
+            {tooltip.text}
           </div>
-        ))}
-      </div>
+        )}
+
+        <div className="chat-messages" ref={scrollRef}>
+          {messages.map(msg => {
+            const snap = msg.role === 'human' ? relevanceMap[msg.id] : undefined
+
+            return (
+              <div key={msg.id} style={{ marginBottom: '1.5rem', opacity: msg.isInterrupted ? 0.6 : 1 }}>
+                <span style={{
+                  fontWeight: 'bold',
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: roleColor(msg.role),
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  marginBottom: '0.2rem'
+                }}>
+                  {msg.role === 'human' ? 'You' : msg.agentName || 'System'}
+                  {msg.isStreaming && <span style={{ animation: 'pulse 0.8s infinite' }}>▌</span>}
+                </span>
+                
+                <div style={markdownStyles}>
+                  <ReactMarkdown>{cleanContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>
+                </div>
+
+                {/* Relevance chips for human messages */}
+                {snap && (() => {
+                  const allEntries = Object.entries(snap.scores)
+                  if (allEntries.length === 0) return null
+
+                  // Sort: above-threshold first (by score desc), then below-threshold (by score desc)
+                  const above = allEntries.filter(([, s]) => s >= THRESHOLD).sort((a, b) => b[1] - a[1])
+                  const below = allEntries.filter(([, s]) => s < THRESHOLD).sort((a, b) => b[1] - a[1])
+                  const sorted = [...above, ...below]
+
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.6rem' }}>
+                      {sorted.map(([name, score]) => {
+                        const isAbove = score >= THRESHOLD
+                        const reason = snap.reasons[name] || ''
+                        const pct = Math.round(score * 10)
+                        const tooltipText = `${name} — ${pct}% relevance${reason ? `\n${reason}` : ''}`
+
+                        return (
+                          <div
+                            key={name}
+                            onMouseEnter={(e) => {
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                              setTooltip({ visible: true, text: tooltipText, x: rect.left + rect.width / 2, y: rect.top })
+                            }}
+                            onMouseLeave={() => setTooltip(prev => ({ ...prev, visible: false }))}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.2rem',
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '999px',
+                              fontSize: '0.7rem',
+                              cursor: 'default',
+                              userSelect: 'none',
+                              backgroundColor: isAbove ? 'rgba(110, 89, 255, 0.15)' : 'rgba(255,255,255,0.04)',
+                              border: `1px solid ${isAbove ? 'rgba(110, 89, 255, 0.4)' : 'rgba(255,255,255,0.08)'}`,
+                              color: isAbove ? 'var(--accent-color)' : 'rgba(255,255,255,0.3)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <span style={{ fontSize: '0.75rem' }}>{name.charAt(0)}</span>
+                            <span style={{ fontWeight: isAbove ? '600' : '400' }}>{pct}%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+            )
+          })}
+        </div>
 
       <div className="chat-input-area">
         <MentionInput
