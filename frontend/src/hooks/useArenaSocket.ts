@@ -10,7 +10,7 @@ export type WSEvent =
   | { type: 'error'; error: string }
   | { type: 'telemetry'; data: any[]; budgets: Record<string, number> }
   | { type: 'semantic'; annotations: any[]; scratchpad: any }
-  | { type: 'status_update'; statuses: Record<string, string>; scores?: Record<string, number>; reasons?: Record<string, string> }
+  | { type: 'status_update'; statuses: Record<string, string>; scores?: Record<string, number>; reasons?: Record<string, string>; emojis?: Record<string, string> }
 
 interface UseArenaSocketOptions {
   roomId: number

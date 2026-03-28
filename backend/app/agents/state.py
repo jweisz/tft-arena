@@ -8,6 +8,7 @@ class AgentConfig(TypedDict):
     name: str
     role_description: str
     system_prompt: str
+    emoji: str
     model: str
     provider: str
     token_budget: int          # max turns (not tokens) this agent can spend per session per human response

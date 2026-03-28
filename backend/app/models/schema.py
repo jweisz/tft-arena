@@ -46,6 +46,7 @@ class Agent(Base):
     role_description = Column(Text, nullable=False)
     system_prompt = Column(Text, nullable=False)
     avatar_url = Column(String, nullable=True)
+    emoji = Column(String, default="🤖")
     
     token_budget = Column(Integer, default=3)
     provider = Column(String, default="openai") # e.g. openai, anthropic

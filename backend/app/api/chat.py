@@ -45,6 +45,7 @@ def _load_agents(room, db, default_budget: int = 3) -> list:
             "name": a.name,
             "role_description": a.role_description,
             "system_prompt": a.system_prompt,
+            "emoji": a.emoji or "🤖",
             "model": a.model,
             "provider": a.provider,
             "token_budget": a.token_budget or default_budget,
@@ -148,6 +149,7 @@ async def websocket_endpoint(
                                     "statuses": final_output["agent_statuses"],
                                     "scores": final_output.get("agent_scores", {}),
                                     "reasons": final_output.get("agent_reasons", {}),
+                                    "emojis": {a["name"]: a["emoji"] for a in active_agents}
                                 }, room_id)
                         elif node_name.startswith("agent_node"):
                             final_output = event.get("data", {}).get("output", {})

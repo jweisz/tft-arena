@@ -15,6 +15,16 @@ from app.api.providers import router as providers_router
 # Create tables on startup if they don't exist
 Base.metadata.create_all(bind=engine)
 
+# --- Lightweight Migrations ---
+from sqlalchemy import inspect, text
+inspector = inspect(engine)
+columns = [c["name"] for c in inspector.get_columns("agents")]
+if "emoji" not in columns:
+    print("--- MIGRATION: Adding 'emoji' column to 'agents' table ---")
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE agents ADD COLUMN emoji VARCHAR DEFAULT '🤖'"))
+        conn.commit()
+
 app = FastAPI(title="tft-arena Backend", version="1.0.0")
 
 # Configure CORS for Vite development server

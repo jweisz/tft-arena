@@ -27,6 +27,7 @@ class AgentBase(BaseModel):
     role_description: str
     system_prompt: str
     avatar_url: Optional[str] = None
+    emoji: str = "🤖"
     token_budget: Optional[int] = 3
     provider: str = "ollama"
     model: str = "llama3"

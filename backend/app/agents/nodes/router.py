@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from ..state import ArenaState
@@ -62,15 +63,20 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
         llm = get_llm(provider="openai", model_name="gpt-4o-mini", temperature=0)
         response = await llm.ainvoke([SystemMessage(content=prompt)])
         
-        # Clean response text in case of markdown formatting
+        # Clean response text in case of markdown formatting or filler
         raw_content = response.content.strip()
-        if raw_content.startswith("```json"):
-            raw_content = raw_content[7:-3].strip()
-        if raw_content.startswith("{"):
-            parsed = json.loads(raw_content)
+        
+        # Use regex to find the last JSON block in case of conversational filler
+        # This handles cases like: "Sure! Here is the JSON: ```json ... ```" or just "```json ... ```"
+        match = re.search(r"(\{.*\})", raw_content, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+            parsed = json.loads(json_str)
             scores = {name: float(score) for name, score in parsed.get("scores", {}).items()}
             reasons = {name: str(reason) for name, reason in parsed.get("reasons", {}).items()}
             return scores, reasons
+        else:
+            print(f"Warning: No JSON match found in router output: {raw_content[:200]}...")
     except Exception as e:
         print(f"Warning: Speaker importance evaluation failed: {e}")
         

@@ -7,6 +7,7 @@ interface Agent {
   name: string
   role_description: string
   system_prompt: string
+  emoji: string
   model: string
   provider: string
   token_budget: number
@@ -16,6 +17,7 @@ const DEFAULT_AGENT: Agent = {
   name: '',
   role_description: '',
   system_prompt: '',
+  emoji: '🤖',
   model: 'llama3',
   provider: 'ollama',
   token_budget: 3,
@@ -80,22 +82,33 @@ export const AgentManager: React.FC = () => {
     if (!payload.system_prompt) {
       payload.system_prompt = `You are ${payload.name}. Your role is: ${payload.role_description}. Always stay in character.`
     }
-
+    
+    console.log('[AGENT MANAGER] Saving agent...', payload)
     try {
       const url = payload.id
         ? `http://localhost:8000/api/agents/${payload.id}`
         : `http://localhost:8000/api/agents/`
       const method = payload.id ? 'PUT' : 'POST'
+      
+      console.log(`[AGENT MANAGER] ${method} to ${url}`)
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+      console.log('[AGENT MANAGER] Response status:', res.status)
       if (res.ok) { 
         await fetchAgents()
         triggerAgentsRefresh()
         setEditing(null)
+      } else {
+        const err = await res.json().catch(() => ({ detail: 'Unknown server error' }))
+        console.error('Agent save failed:', err)
+        alert(`Failed to save agent persona: ${err.detail || 'Internal server error'}`)
       }
+    } catch (err) {
+      console.error('Network error during save:', err)
+      alert(`Network error saving agent persona. Is the backend running?`)
     } finally { setLoading(false) }
   }
 
@@ -145,7 +158,10 @@ export const AgentManager: React.FC = () => {
                 <div key={agent.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' }}>
                   <img src={getAvatarUrl(agent)} alt={agent.name} width={40} height={40} style={{ borderRadius: '50%', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.2rem' }}>{agent.name}</div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>{agent.emoji || '🤖'}</span>
+                      {agent.name}
+                    </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{agent.provider} / {agent.model}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
@@ -180,16 +196,22 @@ export const AgentManager: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.6rem', fontWeight: 'bold' }}>Presets</label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
                 {presets.map(preset => (
-                  <button key={preset.name} onClick={() => setEditing({ ...editing, name: preset.name, role_description: preset.description })} style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-primary)' }}>
+                  <button key={preset.name} onClick={() => setEditing({ ...editing, name: preset.name, role_description: preset.description, emoji: preset.emoji })} style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-primary)' }}>
                     {preset.emoji} {preset.name}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.3rem', fontWeight: 'bold' }}>Name</label>
-              <input type="text" value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} placeholder="e.g. Devil's Advocate" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }} />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.3rem', fontWeight: 'bold' }}>Name</label>
+                <input type="text" value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} placeholder="e.g. Devil's Advocate" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }} />
+              </div>
+              <div style={{ width: '80px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.3rem', fontWeight: 'bold' }}>Emoji</label>
+                <input type="text" value={editing.emoji} onChange={e => setEditing({ ...editing, emoji: e.target.value })} placeholder="🤖" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '1.2rem' }} />
+              </div>
             </div>
             
             <div>

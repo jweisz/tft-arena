@@ -18,6 +18,7 @@ interface ChatMessage {
 interface RelevanceSnapshot {
   scores: Record<string, number>
   reasons: Record<string, string>
+  emojis: Record<string, string>
 }
 
 interface ScratchpadState {
@@ -65,6 +66,7 @@ export const ChatArea: React.FC<{
           const snapshot: RelevanceSnapshot = {
             scores: event.scores,
             reasons: event.reasons ?? {},
+            emojis: event.emojis ?? {},
           }
           setRelevanceMap(prev => ({ ...prev, [msgId]: snapshot }))
         }
@@ -318,7 +320,8 @@ export const ChatArea: React.FC<{
                         const isAbove = score >= THRESHOLD
                         const reason = snap.reasons[name] || ''
                         const pct = Math.round(score * 10)
-                        const tooltipText = `${name} — ${pct}% relevance${reason ? `\n${reason}` : ''}`
+                        const emoji = snap.emojis[name] || '🤖'
+                        const tooltipText = `${emoji} ${name} — ${pct}% relevance${reason ? `\n\n${reason}` : ''}`
 
                         return (
                           <div
@@ -331,20 +334,21 @@ export const ChatArea: React.FC<{
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.2rem',
-                              padding: '0.15rem 0.45rem',
+                              gap: '0.35rem',
+                              padding: '0.2rem 0.6rem',
                               borderRadius: '999px',
-                              fontSize: '0.7rem',
-                              cursor: 'default',
+                              fontSize: '0.75rem',
+                              cursor: 'help',
                               userSelect: 'none',
-                              backgroundColor: isAbove ? 'rgba(110, 89, 255, 0.15)' : 'rgba(255,255,255,0.04)',
-                              border: `1px solid ${isAbove ? 'rgba(110, 89, 255, 0.4)' : 'rgba(255,255,255,0.08)'}`,
-                              color: isAbove ? 'var(--accent-color)' : 'rgba(255,255,255,0.3)',
-                              transition: 'all 0.15s ease',
+                              backgroundColor: isAbove ? 'rgba(110, 89, 255, 0.12)' : 'rgba(255,255,255,0.03)',
+                              border: `1px solid ${isAbove ? 'rgba(110, 89, 255, 0.35)' : 'rgba(255,255,255,0.06)'}`,
+                              color: isAbove ? 'var(--accent-color)' : 'rgba(255,255,255,0.4)',
+                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                              boxShadow: isAbove ? '0 0 12px rgba(110, 89, 255, 0.05)' : 'none',
                             }}
                           >
-                            <span style={{ fontSize: '0.75rem' }}>{name.charAt(0)}</span>
-                            <span style={{ fontWeight: isAbove ? '600' : '400' }}>{pct}%</span>
+                            <span style={{ fontSize: '0.9rem' }}>{emoji}</span>
+                            <span style={{ fontWeight: isAbove ? '600' : '400', letterSpacing: '0.01em' }}>{pct}%</span>
                           </div>
                         )
                       })}
