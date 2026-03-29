@@ -53,22 +53,22 @@ export const LoginScreen: React.FC<{ onLogin: (session: AuthSession) => void }> 
       </div>
 
       <div style={{ padding: '2rem', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <button 
+        <button
           onClick={handleLocalLogin}
           disabled={loading}
-          style={{ 
-            background: 'var(--accent-color)', 
-            color: '#ffffff', 
-            padding: '12px 24px', 
+          style={{
+            background: 'var(--accent-color)',
+            color: '#ffffff',
+            padding: '12px 24px',
             border: 'none',
-            borderRadius: '4px', 
-            cursor: 'pointer', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '10px', 
-            fontWeight: 'bold', 
-            fontFamily: 'inherit', 
+            borderRadius: '4px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            fontWeight: 'bold',
+            fontFamily: 'inherit',
             transition: 'opacity 0.2s ease',
             fontSize: '1rem',
             opacity: loading ? 0.7 : 1,

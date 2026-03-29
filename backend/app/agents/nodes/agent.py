@@ -21,7 +21,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     from ...core.locks import lock_manager
     from ...core.websockets import manager
-    
+
     agent = state["current_agent"]
     room_id = state.get("room_id", 0)
     messages = list(state["messages"])
@@ -34,7 +34,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
     response = None
     elapsed_ms = 0.0
     clean_content = ""
-    
+
     try:
         # Prepare context and prompt outside the speaking lock.
         evicted_messages, memories_prefix, profile_prefix = await _prepare_context(messages, agent, room_id)
@@ -115,7 +115,7 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         # Deduct 1 TURN from budget
         current_budget = agent_budgets.get(agent["name"], 0)
         new_budgets = {**agent_budgets, agent["name"]: max(0, current_budget - 1)}
-        
+
         # Broadcast budget update immediately
         await manager.send_json_to_room({
             "type": "budget_update",

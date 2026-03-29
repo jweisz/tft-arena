@@ -22,8 +22,8 @@ class GlobalSettings(Base):
     google_api_key = Column(String, nullable=True)
     ollama_base_url = Column(String, default="http://host.docker.internal:11434")
     # Stored as JSON string
-    theme_preferences = Column(Text, nullable=True) 
-    
+    theme_preferences = Column(Text, nullable=True)
+
     default_agent_turn_budget = Column(Integer, default=3)
     global_system_instruction = Column(Text, nullable=True)
 
@@ -33,7 +33,7 @@ class Room(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
+
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
     room_agents = relationship("RoomAgent", back_populates="room", cascade="all, delete-orphan")
 
@@ -49,7 +49,7 @@ class Agent(Base):
     system_prompt = Column(Text, nullable=False)
     avatar_url = Column(String, nullable=True)
     emoji = Column(String, default="🤖")
-    
+
     token_budget = Column(Integer, default=3)
     provider = Column(String, default="openai") # e.g. openai, anthropic
     model = Column(String, default="gpt-4o")
@@ -73,18 +73,18 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(Integer, ForeignKey("rooms.id"))
-    
+
     # "human", "agent", "system" (for annotations)
-    role = Column(String, nullable=False) 
+    role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    
+
     # If role == "agent" or "system", which agent generated it?
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
-    
+
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     tokens_used = Column(Integer, default=0)
     latency_ms = Column(Float, default=0.0)
     is_interrupted = Column(Boolean, default=False)
-    
+
     room = relationship("Room", back_populates="messages")
     agent = relationship("Agent")

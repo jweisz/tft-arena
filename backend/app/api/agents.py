@@ -28,7 +28,7 @@ def create_agent(agent_in: AgentCreate, db: Session = Depends(get_db)):
     existing = db.query(schema.Agent).filter(schema.Agent.name == agent_in.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Agent name already exists")
-    
+
     payload = agent_in.model_dump()
     if payload.get("sort_order") is None:
         max_sort_order = db.query(func.max(schema.Agent.sort_order)).scalar()
@@ -45,7 +45,7 @@ def update_agent(agent_id: int, agent_in: AgentCreate, db: Session = Depends(get
     agent = db.query(schema.Agent).filter(schema.Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     # Check name collision
     existing = db.query(schema.Agent).filter(schema.Agent.name == agent_in.name, schema.Agent.id != agent_id).first()
     if existing:

@@ -85,7 +85,7 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
     scores: 0-10 float, reasons: one-sentence explanation.
     """
     if not agents: return {}, {}
-    
+
     # Context window: Use the last 5 messages to provide thematic flow.
     recent_msgs = messages[-5:]
     history_context = [
@@ -130,7 +130,7 @@ Return ONLY JSON with exactly two top-level keys:
             "prefer_1_to_3_top_agents": True,
         },
     }, ensure_ascii=True)
-    
+
     try:
         # Use a fast model for routing decisions
         llm = get_llm(provider="openai", model_name="gpt-4o-mini", temperature=0)
@@ -138,7 +138,7 @@ Return ONLY JSON with exactly two top-level keys:
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt),
         ])
-        
+
         # Clean response text in case of markdown formatting or filler
         raw_content = response.content.strip()
         parsed = _extract_json_object(raw_content)
@@ -196,8 +196,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     if state.get("emergency_stop", False):
         for name in agent_statuses: agent_statuses[name] = "Idle"
         return {
-            "next_speakers": [], 
-            "agent_budgets": agent_budgets, 
+            "next_speakers": [],
+            "agent_budgets": agent_budgets,
             "agent_statuses": agent_statuses,
             "agent_scores": {},
             "agent_reasons": {},
@@ -207,9 +207,9 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     if state.get("interrupted", False):
         for name in agent_statuses: agent_statuses[name] = "Idle"
         return {
-            "next_speakers": [], 
-            "interrupted": False, 
-            "agent_budgets": agent_budgets, 
+            "next_speakers": [],
+            "interrupted": False,
+            "agent_budgets": agent_budgets,
             "agent_statuses": agent_statuses,
             "agent_scores": {},
             "agent_reasons": {},
@@ -229,7 +229,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
                 agent_budgets.get(agent["name"], 0) + BUDGET_REPLENISH_AMOUNT,
                 agent["token_budget"]
             )
-        
+
         # Handle @Mention Override
         mentions = state.get("mentions", [])
         if mentions:
@@ -246,7 +246,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
                         agent_statuses[agent["name"]] = "Idle"
                         agent_scores[agent["name"]] = 0.0
                         agent_reasons[agent["name"]] = "Not directly mentioned."
-                
+
                 return {
                     "next_speakers": next_speakers,
                     "agent_budgets": agent_budgets,
@@ -259,16 +259,16 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
 
     # --- Step 2: Scoring & Candidate Selection (Human & AI) ---
     candidates = [a for a in active_agents if agent_budgets.get(a["name"], 0) > 0]
-    
+
     # Avoid an agent responding immediately to itself (cross-talk prevention)
     if last_msg.type == "ai":
         candidates = [a for a in candidates if a["name"] != last_msg.name]
 
     if not candidates:
         return {
-            "next_speakers": [], 
-            "agent_budgets": agent_budgets, 
-            "agent_statuses": agent_statuses, 
+            "next_speakers": [],
+            "agent_budgets": agent_budgets,
+            "agent_statuses": agent_statuses,
             "agent_scores": {},
             "agent_reasons": {},
             "turn_number": turn + (1 if last_msg.type == "human" else 0)
@@ -278,23 +278,23 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     scores, reasons = await eval_speaker_importance(messages, candidates)
     agent_scores = scores
     agent_reasons = reasons
-    
+
     # Sort candidates by score descending
     sorted_candidates = sorted(candidates, key=lambda a: scores.get(a["name"], 0), reverse=True)
-    
+
     # Filter by threshold
     next_speakers = [
-        a["name"] for a in sorted_candidates 
+        a["name"] for a in sorted_candidates
         if scores.get(a["name"], 0) >= PARTICIPATION_THRESHOLD
     ]
-    
+
     # Fallback: 'Winner Takes All' (ensure at least 1 speaker if generic prompt)
     if not next_speakers and sorted_candidates:
         top_agent = sorted_candidates[0]
         if scores.get(top_agent["name"], 0) >= 1.0:
             next_speakers = [top_agent["name"]]
             agent_reasons[top_agent["name"]] = f"{agent_reasons.get(top_agent['name'], 'Best available match.')} Selected as the best available fallback."
-    
+
     # Set status for next speakers
     for name in next_speakers:
         agent_statuses[name] = "Thinking"

@@ -42,9 +42,9 @@ function App() {
 
   return (
     <div className="app-container">
-      <SidebarLeft 
-        selectedRoomId={selectedRoomId} 
-        onSelectRoom={handleSelectRoom} 
+      <SidebarLeft
+        selectedRoomId={selectedRoomId}
+        onSelectRoom={handleSelectRoom}
       />
 
       <ChatArea
@@ -53,10 +53,10 @@ function App() {
         onTelemetryUpdate={handleTelemetryUpdate}
       />
 
-      <SidebarRight 
-        roomId={selectedRoomId} 
-        scratchpad={scratchpad} 
-        telemetry={telemetry} 
+      <SidebarRight
+        roomId={selectedRoomId}
+        scratchpad={scratchpad}
+        telemetry={telemetry}
       />
 
       <SettingsModal />

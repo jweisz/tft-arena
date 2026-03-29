@@ -77,11 +77,11 @@ export const ChatArea: React.FC<{
   const lastHumanMsgIdRef = useRef<string | null>(null)
   // Tooltip state
   const [tooltip, setTooltip] = useState<{ visible: boolean; text: string; x: number; y: number }>({ visible: false, text: '', x: 0, y: 0 })
-  const { 
-    streamingAgents, 
-    updateStreamingAgents, 
-    updateAgentStatus, 
-    updateAgentBudget, 
+  const {
+    streamingAgents,
+    updateStreamingAgents,
+    updateAgentStatus,
+    updateAgentBudget,
     setAllBudgets,
     setGenerationInProgress,
   } = useUIStore()
@@ -172,7 +172,7 @@ export const ChatArea: React.FC<{
           nextSet.add(event.agent)
           updateStreamingAgents(nextSet)
         }
-        
+
         // Ensure a unique ID for this specific response turn
         if (!streamingIdsRef.current[event.agent]) {
           streamingIdsRef.current[event.agent] = nextMessageId(`streaming-${event.agent}`)
@@ -334,7 +334,7 @@ export const ChatArea: React.FC<{
 
   // Styles for the markdown body to match existing constraints
   const markdownStyles = {
-    lineHeight: '1.6', 
+    lineHeight: '1.6',
     margin: '0.3rem 0 0 0'
   }
 
@@ -387,7 +387,7 @@ export const ChatArea: React.FC<{
                   {msg.role === 'human' ? 'You' : msg.agentName || 'System'}
                   {msg.isStreaming && <span style={{ animation: 'pulse 0.8s infinite' }}>▌</span>}
                 </span>
-                
+
                 <div style={markdownStyles}>
                   <ReactMarkdown>{sanitizeDisplayedAgentContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>
                 </div>

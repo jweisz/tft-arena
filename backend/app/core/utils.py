@@ -6,7 +6,7 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
     Used by both the agent nodes and the chat bridge for safe persistence.
     """
     sanitized = content.strip()
-    
+
     # 1. Strip dynamic name prefixes (e.g. 'Muse: ', 'Historian — ', 'Historian: ')
     # Case insensitive, matching at the start of the string or inside a leading quote.
     prefix_patterns = [
@@ -16,10 +16,10 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
         r"^\s*[\"']?Assistant\s*[:\-—]\s*[\"']?",
         r"^\s*[\"']?AI\s*[:\-—]\s*[\"']?",
     ]
-    
+
     for pattern in prefix_patterns:
         sanitized = re.sub(pattern, "", sanitized, flags=re.IGNORECASE).strip()
-    
+
     # 2. Strip surrounding bulk quotes if the agent wrapped their whole message in them
     # Handle cases like "Aye, the Colosseum..." -> Aye, the Colosseum...
     if (sanitized.startswith('"') and sanitized.endswith('"')) or \
@@ -39,5 +39,5 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
 
     # 4. Remove trailing markdown header markers left after truncation.
     sanitized = re.sub(r"\n\s*#{2,}\s*$", "", sanitized).strip()
-        
+
     return sanitized

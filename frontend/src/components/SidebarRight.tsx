@@ -24,9 +24,9 @@ interface Props {
 // Removed hardcoded ROOM_ID = 1
 
 export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry }) => {
-  const { 
-    agentsRefreshKey, 
-    agentStatuses, 
+  const {
+    agentsRefreshKey,
+    agentStatuses,
     agentBudgets,
   } = useUIStore()
   const hasContent = scratchpad && (scratchpad.consensus || scratchpad.open_questions.length > 0 || scratchpad.key_ideas.length > 0)
@@ -116,7 +116,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
             Agent Roster
           </h3>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); bulkActiveAgents(true); }}
               disabled={loading || !hasActiveRoom}
               style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
@@ -125,7 +125,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
             >
               ALL
             </button>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); bulkActiveAgents(false); }}
               disabled={loading || !hasActiveRoom}
               style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
@@ -149,23 +149,23 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
             const isActive = hasActiveRoom ? Boolean(agent.is_active) : false
             const status = isActive ? (agentStatuses[agent.name] || 'Idle') : 'Inactive'
             const isProcessing = status === 'Thinking' || status === 'Speaking' || status === 'Queued'
-            
+
             const count = agentActivity[agent.name] || 0
             const activityPercent = totalActivity > 0 ? (count / totalActivity) * 100 : 0
 
             return (
-              <div 
-                key={agent.id} 
+              <div
+                key={agent.id}
                 onClick={() => {
                   if (!hasActiveRoom) return
                   toggleAgent(agent.id)
                 }}
-                style={{ 
-                  padding: '0.75rem', 
-                  backgroundColor: getChipBackground(status, isActive), 
+                style={{
+                  padding: '0.75rem',
+                  backgroundColor: getChipBackground(status, isActive),
                   border: isActive ? `1px solid ${isProcessing ? getStatusColor(status) : 'var(--border-color)'}` : '1px solid var(--border-color)',
-                  borderRadius: '8px', 
-                  display: 'flex', 
+                  borderRadius: '8px',
+                  display: 'flex',
                   flexDirection: 'column',
                   gap: '0.5rem',
                   cursor: hasActiveRoom ? 'pointer' : 'not-allowed',
@@ -177,9 +177,9 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <img src={getAvatarUrl(agent)} alt={agent.name} width={32} height={32} style={{ 
-                        borderRadius: '50%', 
-                        flexShrink: 0, 
+                    <img src={getAvatarUrl(agent)} alt={agent.name} width={32} height={32} style={{
+                        borderRadius: '50%',
+                        flexShrink: 0,
                         border: isActive ? `2px solid ${getStatusColor(status)}` : '1px solid var(--border-color)',
                         animation: isProcessing ? 'pulse 1.5s infinite' : 'none'
                     }} />
@@ -209,14 +209,14 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
                     {Array.from({ length: agent.token_budget }).map((_, i) => {
                       const isFilled = i < currentBudget
                       return (
-                        <div 
-                          key={i} 
-                          style={{ 
-                            flex: 1, 
-                            backgroundColor: isFilled ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)', 
+                        <div
+                          key={i}
+                          style={{
+                            flex: 1,
+                            backgroundColor: isFilled ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)',
                             borderRadius: '1px',
                             transition: 'background-color 0.3s ease'
-                          }} 
+                          }}
                         />
                       )
                     })}

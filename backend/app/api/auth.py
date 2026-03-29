@@ -40,17 +40,17 @@ def verify_google_token(token_data: GoogleToken):
     try:
         # Verify the Google JWT token
         idinfo = id_token.verify_oauth2_token(token_data.credential, requests.Request(), GOOGLE_CLIENT_ID)
-        
+
         email = idinfo.get("email")
         if not email or email.lower() != ALLOWED_USER_EMAIL.lower():
             raise HTTPException(status_code=403, detail="Unregistered email address")
-            
+
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": email}, expires_delta=access_token_expires
         )
-        
+
         return {"access_token": access_token, "token_type": "bearer", "user": {"email": email, "name": idinfo.get("name")}}
-        
+
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")

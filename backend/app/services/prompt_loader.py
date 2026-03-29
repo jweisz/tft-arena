@@ -26,7 +26,7 @@ class PromptLoader:
             prompt_data = self._parse_md_file(file_path)
             if prompt_data:
                 prompts.append(prompt_data)
-        
+
         prompts.sort(key=lambda x: x["name"])
         return prompts
 
@@ -48,7 +48,7 @@ class PromptLoader:
                         "system_prompt": description,
                         "filename": file_path.name
                     }
-            
+
             # Fallback if no frontmatter
             return {
                 "name": file_path.stem,

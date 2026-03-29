@@ -103,7 +103,7 @@ export const AgentManager: React.FC = () => {
     } catch { console.error("Failed to fetch presets") }
   }
 
-  useEffect(() => { 
+  useEffect(() => {
     if (isAgentManagerOpen) {
       fetchAgents()
       fetchModels()
@@ -114,27 +114,27 @@ export const AgentManager: React.FC = () => {
   }, [isAgentManagerOpen])
 
   // Get a flat list of all models for the unified dropdown
-  const allModels = availableModels.flatMap(p => 
+  const allModels = availableModels.flatMap(p =>
     p.models.map(m => ({ provider: p.provider, model: m }))
   )
 
   const save = async () => {
     if (!editing) return
     setLoading(true)
-    
+
     // Auto-generate system prompt if empty
     const payload = { ...editing }
     if (!payload.system_prompt) {
       payload.system_prompt = `You are ${payload.name}. Your role is: ${payload.role_description}. Always stay in character.`
     }
-    
+
     console.log('[AGENT MANAGER] Saving agent...', payload)
     try {
       const url = payload.id
         ? `/api/agents/${payload.id}`
         : '/api/agents/'
       const method = payload.id ? 'PUT' : 'POST'
-      
+
       console.log(`[AGENT MANAGER] ${method} to ${url}`)
       await apiJson<Agent>(url, {
         method,
@@ -262,7 +262,7 @@ export const AgentManager: React.FC = () => {
                 </div>
               ))}
             </div>
-            
+
             <button onClick={() => {
               const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
               setEditing({ ...DEFAULT_AGENT, provider: firstModel.provider, model: firstModel.model })
@@ -276,7 +276,7 @@ export const AgentManager: React.FC = () => {
         {editing && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeSlideIn 0.2s ease' }}>
             <h3 style={{ margin: 0, fontSize: '1rem' }}>{editing.id ? 'Edit Persona' : 'New Persona'}</h3>
-            
+
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.6rem', fontWeight: 'bold' }}>Presets</label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
@@ -298,14 +298,14 @@ export const AgentManager: React.FC = () => {
                 <input type="text" value={editing.emoji} onChange={e => setEditing({ ...editing, emoji: e.target.value })} placeholder="🤖" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '1.2rem' }} />
               </div>
             </div>
-            
+
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.3rem', fontWeight: 'bold' }}>Role Description</label>
-              <textarea 
-                value={editing.role_description} 
-                onChange={e => setEditing({ ...editing, role_description: e.target.value })} 
-                placeholder="e.g. Challenges assumptions and finds edge cases..." 
-                style={{ width: '100%', minHeight: '100px', padding: '0.6rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }} 
+              <textarea
+                value={editing.role_description}
+                onChange={e => setEditing({ ...editing, role_description: e.target.value })}
+                placeholder="e.g. Challenges assumptions and finds edge cases..."
+                style={{ width: '100%', minHeight: '100px', padding: '0.6rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
               />
             </div>
 
@@ -326,12 +326,12 @@ export const AgentManager: React.FC = () => {
                   No models found. Please configure API keys in Settings.
                 </div>
               ) : (
-                <select 
+                <select
                   value={`${editing.provider}:${editing.model}`}
                   onChange={e => {
                     const [provider, model] = e.target.value.split(':')
                     setEditing({ ...editing, provider, model })
-                  }} 
+                  }}
                   style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
                 >
                   {availableModels.map(p => (
@@ -347,9 +347,9 @@ export const AgentManager: React.FC = () => {
 
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button onClick={() => setEditing(null)} style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px' }}>Cancel</button>
-              <button 
-                onClick={save} 
-                disabled={loading || !editing.name || !editing.role_description} 
+              <button
+                onClick={save}
+                disabled={loading || !editing.name || !editing.role_description}
                 style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold', borderRadius: '4px', opacity: (loading || !editing.name || !editing.role_description) ? 0.5 : 1 }}
               >
                 {loading ? 'Saving…' : 'Save Changes'}

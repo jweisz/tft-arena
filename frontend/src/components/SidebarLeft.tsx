@@ -22,11 +22,11 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
   const hasNonIdleStatus = Object.values(agentStatuses).some((status) => status !== 'Idle')
   const isGenerating = generationInProgress || streamingAgents.size > 0 || hasNonIdleStatus
   const [rooms, setRooms] = useState<Room[]>([])
-  
+
   // Renaming state
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renamingName, setRenamingName] = useState('')
-  
+
   // Menu state (which room has its menu open)
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
@@ -39,7 +39,7 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
     } catch { return [] }
   }, [])
 
-  useEffect(() => { 
+  useEffect(() => {
     let cancelled = false
 
     const loadRooms = async () => {
@@ -183,13 +183,13 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
           <h3 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
             Chats
           </h3>
-          <button 
+          <button
             onClick={createRoom}
-            style={{ 
-              padding: '2px', 
-              background: 'transparent', 
-              border: 'none', 
-              cursor: 'pointer', 
+            style={{
+              padding: '2px',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
               color: 'var(--text-secondary)',
               display: 'flex',
               alignItems: 'center'
@@ -200,7 +200,7 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
         </div>
 
         {rooms.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No chats yet.</p>}
-        
+
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
           {rooms.map(room => (
             <li
@@ -222,10 +222,10 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
               {renamingId === room.id ? (
                 <input
                   autoFocus
-                  style={{ 
-                    flex: 1, 
-                    fontSize: '0.9rem', 
-                    background: 'var(--bg-input)', 
+                  style={{
+                    flex: 1,
+                    fontSize: '0.9rem',
+                    background: 'var(--bg-input)',
                     border: '1px solid var(--accent-color)',
                     color: 'var(--text-primary)',
                     padding: '1px 4px',
@@ -245,17 +245,17 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
                   <span style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                     {room.name}
                   </span>
-                  
+
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         setMenuOpenId(current => current === room.id ? null : room.id)
                       }}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        cursor: 'pointer', 
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
                         padding: '2px',
                         display: 'flex',
                         color: 'var(--text-secondary)',
@@ -266,11 +266,11 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
                     </button>
 
                     {menuOpenId === room.id && (
-                      <div 
-                        style={{ 
-                          position: 'absolute', 
-                          top: '100%', 
-                          right: 0, 
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
                           backgroundColor: '#252529',
                           border: '1px solid var(--border-color)',
                           borderRadius: '6px',
@@ -282,14 +282,14 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
                         }}
                         onClick={e => e.stopPropagation()}
                       >
-                        <div 
+                        <div
                           className="menu-item"
                           onClick={(e) => handleStartRename(room, e)}
                           style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: '4px' }}
                         >
                           Rename
                         </div>
-                        <div 
+                        <div
                           className="menu-item"
                           onClick={(e) => exportRoom(room.id, room.name, e)}
                           style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: '4px' }}
@@ -298,7 +298,7 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
                         </div>
                         <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '0.3rem 0' }} />
                         {confirmDeleteId === room.id ? (
-                          <div 
+                          <div
                             className="menu-item"
                             onClick={(e) => deleteRoom(room.id, e)}
                             style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#ef4444', color: '#fff', borderRadius: '4px', fontWeight: 'bold' }}
@@ -306,7 +306,7 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
                             Confirm Delete?
                           </div>
                         ) : (
-                          <div 
+                          <div
                             className="menu-item"
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(room.id); }}
                             style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', borderRadius: '4px' }}
@@ -328,9 +328,9 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
         {isGenerating && (
           <button
             onClick={triggerEmergencyStop}
-            style={{ 
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', 
-              fontSize: '0.85rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', fontWeight: 'bold' 
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+              fontSize: '0.85rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', fontWeight: 'bold'
             }}
           >
             <Hexagon size={14} fill="currentColor" /> Emergency Stop

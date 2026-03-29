@@ -144,7 +144,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     # If no allowed email is set, we bypass auth for local open testing
     if not ALLOWED_USER_EMAIL:
         return {"email": "local_dev@localhost"}
-        
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")

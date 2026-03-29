@@ -22,7 +22,7 @@ const FONT_OPTIONS: Array<{ value: ThemeFont; label: string; fontFamily: string 
 export const SettingsModal: React.FC = () => {
   const { isSettingsOpen, toggleSettings, palette, themeFont, setPalette, setThemeFont } = useUIStore()
   const [activeTab, setActiveTab] = useState<'theme' | 'models' | 'arena'>('theme')
-  
+
   // Local state for API keys before saving
   const [openaiKey, setOpenAIKey] = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
@@ -37,7 +37,7 @@ export const SettingsModal: React.FC = () => {
 
   const checkOllamaConnection = useCallback(async (saveUrl?: string) => {
     setOllamaStatus('checking')
-    
+
     // If a URL is provided, save it to the DB first for immediate persistence
     if (saveUrl) {
       try {
@@ -114,7 +114,7 @@ export const SettingsModal: React.FC = () => {
     if (ollamaUrl) payload.ollama_base_url = ollamaUrl
     payload.default_agent_turn_budget = defaultBudget
     payload.global_system_instruction = globalInstruction
-    
+
     // Fire and forget save
     if (Object.keys(payload).length > 0) {
       apiFetch('/api/settings/', {
@@ -153,27 +153,27 @@ export const SettingsModal: React.FC = () => {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
-          <button 
+          <button
             onClick={() => setActiveTab('theme')}
-            style={{ 
+            style={{
               flex: 1, border: 'none', background: 'transparent', padding: '0.75rem', cursor: 'pointer',
               borderBottom: activeTab === 'theme' ? '2px solid var(--accent-color)' : '2px solid transparent',
               color: activeTab === 'theme' ? 'var(--text-primary)' : 'var(--text-secondary)',
               fontWeight: activeTab === 'theme' ? 'bold' : 'normal'
             }}
           >Theme & UI</button>
-          <button 
+          <button
             onClick={() => setActiveTab('models')}
-            style={{ 
+            style={{
               flex: 1, border: 'none', background: 'transparent', padding: '0.75rem', cursor: 'pointer',
               borderBottom: activeTab === 'models' ? '2px solid var(--accent-color)' : '2px solid transparent',
               color: activeTab === 'models' ? 'var(--text-primary)' : 'var(--text-secondary)',
               fontWeight: activeTab === 'models' ? 'bold' : 'normal'
             }}
           >Model Providers</button>
-          <button 
+          <button
             onClick={() => setActiveTab('arena')}
-            style={{ 
+            style={{
               flex: 1, border: 'none', background: 'transparent', padding: '0.75rem', cursor: 'pointer',
               borderBottom: activeTab === 'arena' ? '2px solid var(--accent-color)' : '2px solid transparent',
               color: activeTab === 'arena' ? 'var(--text-primary)' : 'var(--text-secondary)',
@@ -195,7 +195,7 @@ export const SettingsModal: React.FC = () => {
                   { id: 'ocean-breeze', name: 'Ocean', color1: '#0a1f2b', color2: '#0ea5e9', border: '#1a435c' },
                   { id: 'sunset-glow', name: 'Sunset', color1: '#261f1c', color2: '#f97316', border: '#5c3e30' }
                 ].map(p => (
-                  <div 
+                  <div
                     key={p.id}
                     onClick={() => setPalette(p.id as ColorPalette)}
                     style={{
@@ -211,11 +211,11 @@ export const SettingsModal: React.FC = () => {
                     }}
                     title={p.name}
                   >
-                    <div style={{ 
-                      width: '48px', 
-                      height: '48px', 
-                      borderRadius: '50%', 
-                      background: `linear-gradient(135deg, ${p.color1} 40%, ${p.color2} 100%)`, 
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      background: `linear-gradient(135deg, ${p.color1} 40%, ${p.color2} 100%)`,
                       border: palette === p.id ? `3px solid var(--text-primary)` : `2px solid ${p.border}`,
                       boxShadow: palette === p.id ? `0 0 15px ${p.color2}40` : 'none',
                       transition: 'all 0.2s ease'
@@ -230,8 +230,8 @@ export const SettingsModal: React.FC = () => {
 
             <div style={{ marginTop: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Typography</label>
-              <select 
-                value={themeFont} 
+              <select
+                value={themeFont}
                 onChange={(e) => setThemeFont(e.target.value as ThemeFont)}
                 style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
               >
@@ -250,7 +250,7 @@ export const SettingsModal: React.FC = () => {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.5 }}>
               Enter your API keys below to unlock models from these providers. Keys are stored locally in SQLite. Leave blank to keep existing keys.
             </p>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}>OpenAI API Key</label>
@@ -264,11 +264,11 @@ export const SettingsModal: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}>Google Gemini API Key</label>
                 <input type="password" value={geminiKey} onChange={e => setGeminiKey(e.target.value)} placeholder="AIza..." />
               </div>
-              
+
               <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <label style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold' }}>Local Ollama Base URL</label>
-                  
+
                   {/* Status Indicator */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
                     {ollamaStatus === 'checking' && (
@@ -286,7 +286,7 @@ export const SettingsModal: React.FC = () => {
                         <XCircle size={12} /> Disconnected
                       </span>
                     )}
-                    <button 
+                    <button
                       onClick={() => checkOllamaConnection(ollamaUrl)}
                       title="Refresh models"
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '2px', display: 'flex' }}
@@ -295,18 +295,18 @@ export const SettingsModal: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                
-                <input 
-                  type="text" 
-                  value={ollamaUrl} 
-                  onChange={e => setOllamaUrl(e.target.value)} 
+
+                <input
+                  type="text"
+                  value={ollamaUrl}
+                  onChange={e => setOllamaUrl(e.target.value)}
                   onBlur={() => checkOllamaConnection(ollamaUrl)}
-                  placeholder="http://host.docker.internal:11434" 
+                  placeholder="http://host.docker.internal:11434"
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.25rem' }}>
                   Use host.docker.internal if running Ollama natively on Mac/Windows.
                 </span>
-                
+
                 {ollamaStatus === 'error' && (
                   <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '4px', display: 'flex', gap: '0.5rem' }}>
                     <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
@@ -324,40 +324,40 @@ export const SettingsModal: React.FC = () => {
           <div style={{ animation: 'fadeSlideIn 0.2s ease' }}>
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Default Speaking Budget (Turns)</label>
-              <input 
-                type="number" 
-                min={1} 
+              <input
+                type="number"
+                min={1}
                 max={50}
-                value={defaultBudget} 
+                value={defaultBudget}
                 onChange={(e) => setDefaultBudget(parseInt(e.target.value) || 1)}
-                style={{ 
-                  width: '100%', 
-                  padding: '0.75rem', 
-                  backgroundColor: 'var(--bg-tertiary)', 
-                  color: 'var(--text-primary)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: '4px' 
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px'
                 }}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.5rem', lineHeight: 1.4 }}>
-                This is the initial number of turns each agent receives in a new session. 
+                This is the initial number of turns each agent receives in a new session.
                 Agents use 1 turn every time they speak.
               </span>
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Global System Instruction</label>
-              <textarea 
-                value={globalInstruction} 
+              <textarea
+                value={globalInstruction}
                 onChange={(e) => setGlobalInstruction(e.target.value)}
                 placeholder="e.g. Keep your responses extremely brief (1-2 sentences max)..."
-                style={{ 
-                  width: '100%', 
+                style={{
+                  width: '100%',
                   height: '80px',
-                  padding: '0.75rem', 
-                  backgroundColor: 'var(--bg-tertiary)', 
-                  color: 'var(--text-primary)', 
-                  border: '1px solid var(--border-color)', 
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
                   borderRadius: '4px',
                   resize: 'none',
                   fontSize: '0.85rem',

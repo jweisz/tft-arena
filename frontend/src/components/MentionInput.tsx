@@ -53,7 +53,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     }
   }, [roomId])
 
-  const filteredAgents = agents.filter(a => 
+  const filteredAgents = agents.filter(a =>
     a.name.toLowerCase().includes(filter.toLowerCase())
   )
 
@@ -64,16 +64,16 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     if (!selection?.rangeCount) return
 
     const range = selection.getRangeAt(0)
-    
+
     // Find the "@" and the filter text to replace it
     // This is a simplified approach: we assume the cursor is right after the filter text
     const node = range.startContainer
     const offset = range.startOffset
-    
+
     // We need to find the "@" back from the current position
     const text = node.textContent || ''
     const atIndex = text.lastIndexOf('@', offset - 1)
-    
+
     if (atIndex !== -1) {
       range.setStart(node, atIndex)
       range.setEnd(node, offset)
@@ -93,16 +93,16 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     slug.style.margin = '0 2px'
     slug.style.fontWeight = 'bold'
     slug.style.display = 'inline-block'
-    
+
     range.insertNode(slug)
-    
+
     // Insert a space after the slug
     const space = document.createTextNode('\u00A0')
     range.setStartAfter(slug)
     range.insertNode(space)
     range.setStartAfter(space)
     range.collapse(true)
-    
+
     selection.removeAllRanges()
     selection.addRange(range)
 
@@ -113,13 +113,13 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
 
   const handleInput = () => {
     if (!editorRef.current) return
-    
+
     const selection = window.getSelection()
     if (!selection?.rangeCount) return
-    
+
     const range = selection.getRangeAt(0)
     const textBefore = range.startContainer.textContent?.substring(0, range.startOffset) || ''
-    
+
     const match = textBefore.match(/@([^@]*)$/)
     if (match) {
       setFilter(match[1])
@@ -193,11 +193,11 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
 
   const handleSend = () => {
     if (!editorRef.current) return
-    
+
     // Extract text and mentions
     let text = ''
     const mentionsSet = new Set<string>()
-    
+
     const walk = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         text += node.textContent
@@ -219,9 +219,9 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
         }
       }
     }
-    
+
     walk(editorRef.current)
-    
+
     const cleanText = text.trim()
     if (cleanText) {
       onSend(cleanText, Array.from(mentionsSet))
@@ -233,7 +233,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       {showPopup && filteredAgents.length > 0 && (
-        <div 
+        <div
           ref={popupRef}
           style={{
             position: 'absolute',
@@ -270,7 +270,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
           ))}
         </div>
       )}
-      
+
       <div
         ref={editorRef}
         contentEditable={true}
@@ -295,7 +295,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
         }}
         data-placeholder="Type your thought… (@ to mention)"
       />
-      
+
       <style>{`
         [contenteditable=true]:empty:before {
           content: attr(data-placeholder);

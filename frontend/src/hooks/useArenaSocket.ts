@@ -63,9 +63,9 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
         }
         if (data.type === 'telemetry' && data.data.length > 0) {
           const { addLatencyPoints } = useUIStore.getState();
-          addLatencyPoints(data.data.map(p => ({ 
-            agent_name: p.agent_name, 
-            latency_ms: p.latency_ms 
+          addLatencyPoints(data.data.map(p => ({
+            agent_name: p.agent_name,
+            latency_ms: p.latency_ms
           })));
         }
         onEventRef.current(data)
