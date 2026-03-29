@@ -14,6 +14,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => getAuthSession() !== null)
   const [selectedRoomId, setSelectedRoomId] = useState<number>(0)
   const [scratchpad, setScratchpad] = useState<ScratchpadState>({ consensus: '', open_questions: [], key_ideas: [] })
+  const [semanticLastUpdatedAt, setSemanticLastUpdatedAt] = useState<number | null>(null)
   const [telemetry, setTelemetry] = useState<{ data: TelemetryEntry[]; budgets: Record<string, number> }>({ data: [], budgets: {} })
 
   useEffect(() => {
@@ -21,13 +22,17 @@ function App() {
     document.documentElement.setAttribute('data-font', themeFont)
   }, [palette, themeFont])
 
-  const handleScratchpadUpdate = useCallback((s: ScratchpadState) => setScratchpad(s), [])
+  const handleScratchpadUpdate = useCallback((s: ScratchpadState) => {
+    setScratchpad(s)
+    setSemanticLastUpdatedAt(Date.now())
+  }, [])
   const handleTelemetryUpdate = useCallback((data: TelemetryEntry[], budgets: Record<string, number>) => setTelemetry({ data, budgets }), [])
 
   const handleSelectRoom = useCallback((id: number) => {
     setSelectedRoomId(id)
     // Reset scratchpad / telemetry when switching rooms
     setScratchpad({ consensus: '', open_questions: [], key_ideas: [] })
+    setSemanticLastUpdatedAt(null)
     setTelemetry({ data: [], budgets: {} })
   }, [])
 
@@ -56,6 +61,7 @@ function App() {
       <SidebarRight
         roomId={selectedRoomId}
         scratchpad={scratchpad}
+        semanticLastUpdatedAt={semanticLastUpdatedAt}
         telemetry={telemetry}
       />
 

@@ -18,12 +18,13 @@ interface Agent {
 interface Props {
   roomId: number
   scratchpad?: ScratchpadState
+  semanticLastUpdatedAt?: number | null
   telemetry?: { data: TelemetryEntry[]; budgets: Record<string, number> }
 }
 
 // Removed hardcoded ROOM_ID = 1
 
-export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry }) => {
+export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, semanticLastUpdatedAt, telemetry }) => {
   const {
     agentsRefreshKey,
     agentStatuses,
@@ -32,7 +33,15 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
   const hasContent = scratchpad && (scratchpad.consensus || scratchpad.open_questions.length > 0 || scratchpad.key_ideas.length > 0)
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(false)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const hasActiveRoom = roomId > 0
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [])
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -106,6 +115,41 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
 
   const { agentActivity } = useUIStore()
   const totalActivity = Object.values(agentActivity).reduce((a, b) => a + b, 0)
+
+  const formatSemanticUpdateTime = (timestamp: number) => {
+    const date = new Date(timestamp)
+    const hh = String(date.getHours()).padStart(2, '0')
+    const mm = String(date.getMinutes()).padStart(2, '0')
+    const ss = String(date.getSeconds()).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+
+  const getSemanticStatus = () => {
+    if (!semanticLastUpdatedAt) {
+      return {
+        label: 'Awaiting',
+        detail: 'Semantic status: awaiting first update',
+        color: '#6b7280',
+      }
+    }
+
+    const ageSeconds = Math.max(0, Math.floor((nowMs - semanticLastUpdatedAt) / 1000))
+    if (ageSeconds <= 15) {
+      return {
+        label: 'Fresh',
+        detail: `Semantic updated at ${formatSemanticUpdateTime(semanticLastUpdatedAt)}`,
+        color: '#22c55e',
+      }
+    }
+
+    return {
+      label: 'Stale',
+      detail: `Semantic last update at ${formatSemanticUpdateTime(semanticLastUpdatedAt)}`,
+      color: '#f59e0b',
+    }
+  }
+
+  const semanticStatus = getSemanticStatus()
 
   return (
     <aside className="agents-sidebar">
@@ -233,6 +277,22 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
         <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
           Summary
         </h3>
+        <div style={{ margin: '0 0 0.55rem 0', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <span
+            title={`Semantic ${semanticStatus.label}`}
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: semanticStatus.color,
+              boxShadow: `0 0 10px ${semanticStatus.color}66`,
+              flexShrink: 0,
+            }}
+          />
+          <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+            {semanticStatus.detail}
+          </p>
+        </div>
         <div style={{ flex: 1, padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '4px', overflowY: 'auto', fontSize: '0.82rem', lineHeight: '1.6' }}>
           {hasContent ? (
             <>
