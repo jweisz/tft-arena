@@ -24,7 +24,9 @@ class RoomResponse(RoomCreate):
 
 class AgentBase(BaseModel):
     name: str
+    sort_order: Optional[int] = None
     role_description: str
+    relevance_instructions: str = ""
     system_prompt: str
     avatar_url: Optional[str] = None
     emoji: str = "🤖"
@@ -38,6 +40,10 @@ class AgentCreate(AgentBase):
 class AgentResponse(AgentBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class AgentReorderRequest(BaseModel):
+    agent_ids: List[int]
 
 class RoomAgentResponse(AgentResponse):
     """Returned when fetching agents for a specific room."""

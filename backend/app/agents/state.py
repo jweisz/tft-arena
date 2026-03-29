@@ -7,6 +7,7 @@ class AgentConfig(TypedDict):
     id: int
     name: str
     role_description: str
+    relevance_instructions: str
     system_prompt: str
     emoji: str
     model: str

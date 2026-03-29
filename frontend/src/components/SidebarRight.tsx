@@ -1,27 +1,24 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { TelemetryPanel } from './TelemetryPanel'
+import { apiFetch, apiJson, apiUrl } from '../lib/api'
+import type { ScratchpadState, TelemetryEntry } from '../hooks/useArenaSocket'
 import { useUIStore } from '../store/uiStore'
 
 interface Agent {
   id: number
   name: string
+  sort_order?: number | null
   role_description: string
   model: string
   provider: string
   token_budget: number
-  is_active: boolean
-}
-
-interface ScratchpadState {
-  consensus: string
-  open_questions: string[]
-  key_ideas: string[]
+  is_active?: boolean
 }
 
 interface Props {
   roomId: number
   scratchpad?: ScratchpadState
-  telemetry?: { data: any[]; budgets: Record<string, number> }
+  telemetry?: { data: TelemetryEntry[]; budgets: Record<string, number> }
 }
 
 // Removed hardcoded ROOM_ID = 1
@@ -29,36 +26,39 @@ interface Props {
 export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry }) => {
   const { 
     agentsRefreshKey, 
-    streamingAgents, 
     agentStatuses, 
     agentBudgets,
   } = useUIStore()
   const hasContent = scratchpad && (scratchpad.consensus || scratchpad.open_questions.length > 0 || scratchpad.key_ideas.length > 0)
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(false)
+  const hasActiveRoom = roomId > 0
 
-  const fetchAgents = async () => {
-    if (!roomId) return
+  const fetchAgents = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents`)
-      if (res.ok) {
-        const data: Agent[] = await res.json()
-        const sorted = data.sort((a, b) => a.name.localeCompare(b.name))
-        setAgents(sorted)
+      if (!roomId) {
+        const data = await apiJson<Agent[]>('/api/agents/')
+        setAgents(data.map((agent) => ({ ...agent, is_active: false })))
+        return
       }
-    } catch { /* ignored */ }
-  }
+
+      const data = await apiJson<Agent[]>(`/api/rooms/${roomId}/agents`)
+      setAgents(data)
+    } catch {
+      setAgents([])
+    }
+  }, [roomId])
 
   // Refetch when room changes
   useEffect(() => {
     fetchAgents()
-  }, [roomId, agentsRefreshKey])
+  }, [fetchAgents, agentsRefreshKey])
 
   const toggleAgent = async (agentId: number) => {
     if (!roomId || loading) return
     setLoading(true)
     try {
-      const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents/${agentId}/toggle`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/agents/${agentId}/toggle`, {
         method: 'POST'
       })
       if (res.ok) {
@@ -73,7 +73,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
     if (!roomId || loading) return
     setLoading(true)
     try {
-      const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents/bulk-active?active=${active}`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/agents/bulk-active?active=${active}`, {
         method: 'POST'
       })
       if (res.ok) {
@@ -85,7 +85,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
   }
 
   const getAvatarUrl = (agent: Agent) =>
-    `http://localhost:8000/api/avatars/generate-default?role_description=${encodeURIComponent(agent.role_description)}&agent_name=${encodeURIComponent(agent.name)}`
+    apiUrl(`/api/avatars/generate-default?role_description=${encodeURIComponent(agent.role_description)}&agent_name=${encodeURIComponent(agent.name)}`)
 
   const getStatusColor = (status?: string) => {
     if (status === 'Speaking') return 'var(--accent-color)'
@@ -118,7 +118,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             <button 
               onClick={(e) => { e.stopPropagation(); bulkActiveAgents(true); }}
-              disabled={loading}
+              disabled={loading || !hasActiveRoom}
               style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
               onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
               onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
@@ -127,7 +127,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
             </button>
             <button 
               onClick={(e) => { e.stopPropagation(); bulkActiveAgents(false); }}
-              disabled={loading}
+              disabled={loading || !hasActiveRoom}
               style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
               onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
               onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
@@ -139,9 +139,14 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
           {agents.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>No agents defined.</p>}
+          {!hasActiveRoom && agents.length > 0 && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0 0 0.2rem 0' }}>
+              Select a chat to enable agent participation.
+            </p>
+          )}
           {agents.map(agent => {
             const currentBudget = agentBudgets[agent.name] ?? agent.token_budget
-            const isActive = agent.is_active
+            const isActive = hasActiveRoom ? Boolean(agent.is_active) : false
             const status = isActive ? (agentStatuses[agent.name] || 'Idle') : 'Inactive'
             const isProcessing = status === 'Thinking' || status === 'Speaking' || status === 'Queued'
             
@@ -151,7 +156,10 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
             return (
               <div 
                 key={agent.id} 
-                onClick={() => toggleAgent(agent.id)}
+                onClick={() => {
+                  if (!hasActiveRoom) return
+                  toggleAgent(agent.id)
+                }}
                 style={{ 
                   padding: '0.75rem', 
                   backgroundColor: getChipBackground(status, isActive), 
@@ -160,7 +168,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, telemetry })
                   display: 'flex', 
                   flexDirection: 'column',
                   gap: '0.5rem',
-                  cursor: 'pointer',
+                  cursor: hasActiveRoom ? 'pointer' : 'not-allowed',
                   opacity: isActive ? 1 : 0.4,
                   filter: isActive ? 'none' : 'grayscale(0.6)',
                   transition: 'all 0.2s ease',

@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { MentionInput } from './MentionInput'
 import ReactMarkdown from 'react-markdown'
 import { useArenaSocket } from '../hooks/useArenaSocket'
-import type { WSEvent } from '../hooks/useArenaSocket'
+import type { ScratchpadState, TelemetryEntry, WSEvent } from '../hooks/useArenaSocket'
 import { useTypingAudio } from '../hooks/useTypingAudio'
+import { apiJson } from '../lib/api'
 import { useUIStore } from '../store/uiStore'
 
 interface ChatMessage {
@@ -21,10 +22,45 @@ interface RelevanceSnapshot {
   emojis: Record<string, string>
 }
 
-interface ScratchpadState {
-  consensus: string
-  open_questions: string[]
-  key_ideas: string[]
+const sanitizeDisplayedAgentContent = (text: string, agentName?: string) => {
+  if (!text) return text
+
+  let sanitized = text.trim()
+  if (agentName) {
+    const escapedName = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const prefixPatterns = [
+      new RegExp(`^\\s*["']?${escapedName}\\s*[:\\-—]\\s*["']?`, 'i'),
+      /^\s*["']?Agent\s*[:\-—]\s*["']?/i,
+      /^\s*["']?Response\s*[:\-—]\s*["']?/i,
+      /^\s*["']?Assistant\s*[:\-—]\s*["']?/i,
+      /^\s*["']?AI\s*[:\-—]\s*["']?/i,
+    ]
+    prefixPatterns.forEach((pattern) => {
+      sanitized = sanitized.replace(pattern, '').trim()
+    })
+  }
+
+  const transcriptMarker = /^\s*(?:#{1,6}\s*)?(?:user|assistant|system|human|ai|agent|[A-Za-z][A-Za-z0-9'\- ]{1,40})\s*:\s*/im
+  const markerMatch = transcriptMarker.exec(sanitized)
+  if (markerMatch && markerMatch.index > 0) {
+    sanitized = sanitized.slice(0, markerMatch.index).trim()
+  }
+
+  if ((sanitized.startsWith('"') && sanitized.endsWith('"')) ||
+      (sanitized.startsWith("'") && sanitized.endsWith("'"))) {
+    sanitized = sanitized.slice(1, -1).trim()
+  }
+
+  return sanitized.replace(/\n\s*#{2,}\s*$/, '').trim()
+}
+
+interface HistoryMessage {
+  id: number
+  role: ChatMessage['role']
+  content: string
+  agent?: {
+    name: string
+  } | null
 }
 
 const WELCOME = (roomName?: string) => `Welcome to ${roomName ?? 'the Arena'}. The agents are ready.`
@@ -32,7 +68,7 @@ const WELCOME = (roomName?: string) => `Welcome to ${roomName ?? 'the Arena'}. T
 export const ChatArea: React.FC<{
   roomId: number
   onScratchpadUpdate?: (s: ScratchpadState) => void
-  onTelemetryUpdate?: (data: any[], budgets: Record<string, number>) => void
+  onTelemetryUpdate?: (data: TelemetryEntry[], budgets: Record<string, number>) => void
 }> = ({ roomId, onScratchpadUpdate, onTelemetryUpdate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // Per human-message relevance snapshot: msgId -> { scores, reasons }
@@ -46,11 +82,45 @@ export const ChatArea: React.FC<{
     updateStreamingAgents, 
     updateAgentStatus, 
     updateAgentBudget, 
-    setAllBudgets 
+    setAllBudgets,
+    setGenerationInProgress,
   } = useUIStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const streamingIdsRef = useRef<Record<string, string>>({})
+  const messageIdCounterRef = useRef(0)
   const { playTick } = useTypingAudio()
+
+  const nextMessageId = useCallback((prefix: string) => {
+    messageIdCounterRef.current += 1
+    return `${prefix}-${messageIdCounterRef.current}`
+  }, [])
+
+  const finalizeStreamingMessage = useCallback((agentName: string, isInterrupted: boolean = false, finalContent?: string) => {
+    const messageId = streamingIdsRef.current[agentName]
+    if (!messageId) {
+      return
+    }
+
+    setMessages(prev => prev.map(message => {
+      if (message.id !== messageId) {
+        return message
+      }
+
+      return {
+        ...message,
+        isStreaming: false,
+        isInterrupted,
+        content: isInterrupted
+          ? message.content + ' [Interrupted]'
+          : (finalContent ?? message.content),
+      }
+    }))
+
+    const nextStreaming = new Set(useUIStore.getState().streamingAgents)
+    nextStreaming.delete(agentName)
+    updateStreamingAgents(nextStreaming)
+    delete streamingIdsRef.current[agentName]
+  }, [updateStreamingAgents])
 
   const handleEvent = useCallback((event: WSEvent) => {
     console.log("[WS EFFECT]", event.type, event)
@@ -58,8 +128,12 @@ export const ChatArea: React.FC<{
     switch (event.type) {
       case 'status_update': {
         Object.entries(event.statuses).forEach(([agent, status]) => {
-          updateAgentStatus(agent, status as any)
+          updateAgentStatus(agent, status)
         })
+        const hasActiveStatuses = Object.values(event.statuses).some((status) => status !== 'Idle')
+        if (hasActiveStatuses) {
+          setGenerationInProgress(true)
+        }
         // Snapshot scores+reasons and attach to the last human message
         if (event.scores && Object.keys(event.scores).length > 0 && lastHumanMsgIdRef.current) {
           const msgId = lastHumanMsgIdRef.current
@@ -78,7 +152,12 @@ export const ChatArea: React.FC<{
         })
         break
       }
+      case 'agent_message_done': {
+        finalizeStreamingMessage(event.agent, false, event.content)
+        break
+      }
       case 'thinking': {
+        setGenerationInProgress(true)
         if (!currentStreaming.has(event.agent)) {
           const nextSet = new Set(currentStreaming)
           nextSet.add(event.agent)
@@ -87,7 +166,7 @@ export const ChatArea: React.FC<{
         break
       }
       case 'token': {
-        const agentKey = `streaming-${event.agent}`
+        setGenerationInProgress(true)
         if (!currentStreaming.has(event.agent)) {
           const nextSet = new Set(currentStreaming)
           nextSet.add(event.agent)
@@ -96,7 +175,7 @@ export const ChatArea: React.FC<{
         
         // Ensure a unique ID for this specific response turn
         if (!streamingIdsRef.current[event.agent]) {
-          streamingIdsRef.current[event.agent] = `streaming-${event.agent}-${Date.now()}`
+          streamingIdsRef.current[event.agent] = nextMessageId(`streaming-${event.agent}`)
         }
         const tokenKey = streamingIdsRef.current[event.agent]
 
@@ -120,6 +199,7 @@ export const ChatArea: React.FC<{
         break
       }
       case 'done': {
+        setGenerationInProgress(false)
         setMessages(prev => prev.map(m =>
           m.isStreaming ? { ...m, isStreaming: false } : m
         ))
@@ -128,9 +208,10 @@ export const ChatArea: React.FC<{
         break
       }
       case 'interrupted': {
-        setMessages(prev => prev.map(m =>
-          m.isStreaming ? { ...m, isStreaming: false, isInterrupted: true, content: m.content + ' [Interrupted]' } : m
-        ))
+        setGenerationInProgress(false)
+        Object.keys(streamingIdsRef.current).forEach((agentName) => {
+          finalizeStreamingMessage(agentName, true)
+        })
         updateStreamingAgents(new Set())
         streamingIdsRef.current = {} // Reset all specific IDs on interruption
         break
@@ -149,40 +230,66 @@ export const ChatArea: React.FC<{
         break
       }
       case 'error': {
+        setGenerationInProgress(false)
         setMessages(prev => [
           ...prev,
-          { id: `err-${Date.now()}`, role: 'system', content: `⚠️ Error: ${event.error}` }
+          { id: nextMessageId('err'), role: 'system', content: `⚠️ Error: ${event.error}` }
         ])
         break
       }
     }
-  }, [onScratchpadUpdate, onTelemetryUpdate, playTick, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
+  }, [finalizeStreamingMessage, nextMessageId, onScratchpadUpdate, onTelemetryUpdate, playTick, setGenerationInProgress, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
 
   const { connect, send, disconnect } = useArenaSocket({ roomId, onEvent: handleEvent })
 
   // Load transcript history whenever room changes
   useEffect(() => {
-    if (!roomId) {
-      setMessages([{ id: 'sys-0', role: 'system', content: 'Select or create a chat to start.' }])
-      return
-    }
-    setMessages([{ id: 'sys-0', role: 'system', content: 'Loading history…' }])
-    fetch(`http://localhost:8000/api/rooms/${roomId}/messages/`)
-      .then(r => r.json())
-      .then((history: Array<{id: number; role: string; content: string;}>) => {
+    let cancelled = false
+
+    const loadHistory = async () => {
+      if (!roomId) {
+        if (!cancelled) {
+          setGenerationInProgress(false)
+          setMessages([{ id: 'sys-0', role: 'system', content: 'Select or create a chat to start.' }])
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setMessages([{ id: 'sys-0', role: 'system', content: 'Loading history…' }])
+      }
+
+      try {
+        const history = await apiJson<HistoryMessage[]>(`/api/rooms/${roomId}/messages/`)
+
+        if (cancelled) {
+          return
+        }
+
         if (history.length === 0) {
           setMessages([{ id: 'sys-0', role: 'system', content: WELCOME() }])
           return
         }
-        setMessages(history.map((m: any) => ({
+
+        setMessages(history.map((m) => ({
           id: `db-${m.id}`,
-          role: m.role as ChatMessage['role'],
+          role: m.role,
           agentName: m.agent?.name || (m.role === 'agent' ? 'System' : ''),
           content: m.content,
         })))
-      })
-      .catch(() => setMessages([{ id: 'sys-0', role: 'system', content: WELCOME() }]))
-  }, [roomId])
+      } catch {
+        if (!cancelled) {
+          setMessages([{ id: 'sys-0', role: 'system', content: WELCOME() }])
+        }
+      }
+    }
+
+    void loadHistory()
+
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, setGenerationInProgress])
 
 
   // Reconnect WebSocket when room changes
@@ -201,6 +308,7 @@ export const ChatArea: React.FC<{
 
   const sendMessage = (text: string, mentions?: string[]) => {
     if (!text.trim()) return
+    setGenerationInProgress(true)
     // If agents are streaming, the new message acts as an interrupt
     if (streamingAgents.size > 0) {
       setMessages(prev => prev.map(m =>
@@ -208,7 +316,7 @@ export const ChatArea: React.FC<{
       ))
       updateStreamingAgents(new Set())
     }
-    const msgId = `human-${Date.now()}`
+    const msgId = nextMessageId('human')
     lastHumanMsgIdRef.current = msgId
     setMessages(prev => [...prev, {
       id: msgId,
@@ -229,26 +337,6 @@ export const ChatArea: React.FC<{
     lineHeight: '1.6', 
     margin: '0.3rem 0 0 0'
   }
-
-    const cleanContent = (text: string, agentName?: string) => {
-      if (!agentName || !text) return text
-      // Escaping for regex
-      const escapedName = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const patterns = [
-        new RegExp(`^\\s*["']?${escapedName}[:\\-\\s—]+\\s*["']?`, 'i'),
-        /^\s*["']?Agent[:\\-\\s—]+\\s*["']?/i,
-        /^\s*["']?Response[:\\-\\s—]+\s*["']?/i,
-      ]
-      let sanitized = text.trim()
-      patterns.forEach(p => { sanitized = sanitized.replace(p, '').trim() })
-      
-      // Strip surrounding quotes if they wrap the whole thing
-      if ((sanitized.startsWith('"') && sanitized.endsWith('"')) || 
-          (sanitized.startsWith("'") && sanitized.endsWith("'"))) {
-        sanitized = sanitized.slice(1, -1).trim()
-      }
-      return sanitized
-    }
 
     const THRESHOLD = 3.0
 
@@ -301,7 +389,7 @@ export const ChatArea: React.FC<{
                 </span>
                 
                 <div style={markdownStyles}>
-                  <ReactMarkdown>{cleanContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>
+                  <ReactMarkdown>{sanitizeDisplayedAgentContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>
                 </div>
 
                 {/* Relevance chips for human messages */}

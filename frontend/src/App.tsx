@@ -6,19 +6,15 @@ import { ChatArea } from './components/ChatArea'
 import { SettingsModal } from './components/SettingsModal'
 import { AgentManager } from './components/AgentManager'
 import { LoginScreen } from './components/LoginScreen'
-
-interface ScratchpadState {
-  consensus: string
-  open_questions: string[]
-  key_ideas: string[]
-}
+import type { ScratchpadState, TelemetryEntry } from './hooks/useArenaSocket'
+import { getAuthSession, setAuthSession, type AuthSession } from './lib/auth'
 
 function App() {
   const { palette, themeFont } = useUIStore()
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => getAuthSession() !== null)
   const [selectedRoomId, setSelectedRoomId] = useState<number>(0)
   const [scratchpad, setScratchpad] = useState<ScratchpadState>({ consensus: '', open_questions: [], key_ideas: [] })
-  const [telemetry, setTelemetry] = useState<{ data: any[]; budgets: Record<string, number> }>({ data: [], budgets: {} })
+  const [telemetry, setTelemetry] = useState<{ data: TelemetryEntry[]; budgets: Record<string, number> }>({ data: [], budgets: {} })
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', palette)
@@ -26,7 +22,7 @@ function App() {
   }, [palette, themeFont])
 
   const handleScratchpadUpdate = useCallback((s: ScratchpadState) => setScratchpad(s), [])
-  const handleTelemetryUpdate = useCallback((data: any[], budgets: Record<string, number>) => setTelemetry({ data, budgets }), [])
+  const handleTelemetryUpdate = useCallback((data: TelemetryEntry[], budgets: Record<string, number>) => setTelemetry({ data, budgets }), [])
 
   const handleSelectRoom = useCallback((id: number) => {
     setSelectedRoomId(id)
@@ -35,8 +31,13 @@ function App() {
     setTelemetry({ data: [], budgets: {} })
   }, [])
 
+  const handleLogin = useCallback((session: AuthSession) => {
+    setAuthSession(session)
+    setIsAuthenticated(true)
+  }, [])
+
   if (!isAuthenticated) {
-    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />
+    return <LoginScreen onLogin={handleLogin} />
   }
 
   return (

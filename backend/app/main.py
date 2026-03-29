@@ -24,6 +24,17 @@ if "emoji" not in columns:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE agents ADD COLUMN emoji VARCHAR DEFAULT '🤖'"))
         conn.commit()
+if "relevance_instructions" not in columns:
+    print("--- MIGRATION: Adding 'relevance_instructions' column to 'agents' table ---")
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE agents ADD COLUMN relevance_instructions TEXT DEFAULT '' NOT NULL"))
+        conn.commit()
+if "sort_order" not in columns:
+    print("--- MIGRATION: Adding 'sort_order' column to 'agents' table ---")
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE agents ADD COLUMN sort_order INTEGER"))
+        conn.execute(text("UPDATE agents SET sort_order = id WHERE sort_order IS NULL"))
+        conn.commit()
 
 app = FastAPI(title="tft-arena Backend", version="1.0.0")
 
@@ -40,9 +51,28 @@ app.add_middleware(
 def root():
     return RedirectResponse(url="/docs")
 
-@app.get("/health", tags=["Meta"])
+def _health_payload() -> dict:
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "endpoints": [
+            "/api/rooms",
+            "/api/settings",
+            "/api/auth",
+            "/api/chat/{room_id}/stream",
+            "/api/health",
+        ],
+    }
+
+
+@app.get("/api/health", tags=["Meta"])
 def health_check():
-    return {"status": "ok", "version": "1.0.0", "endpoints": ["/api/rooms", "/api/settings", "/api/auth", "/api/chat/{room_id}/stream"]}
+    return _health_payload()
+
+
+@app.get("/health", tags=["Meta"], include_in_schema=False)
+def health_check_legacy():
+    return _health_payload()
 
 app.include_router(rooms_router)
 app.include_router(settings_router)

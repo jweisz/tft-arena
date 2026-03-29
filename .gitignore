@@ -293,7 +293,6 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -386,4 +385,3 @@ Icon
 *.db
 .env
 .env.*
-!.env.example

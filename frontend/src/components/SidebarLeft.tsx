@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Download, Trash2, Settings, Hexagon, Users, MoreHorizontal } from 'lucide-react'
+import { Plus, Settings, Hexagon, Users, MoreHorizontal } from 'lucide-react'
+import { ApiError, apiFetch, apiJson, apiText, getErrorMessage } from '../lib/api'
 import { useUIStore } from '../store/uiStore'
 
 interface Room {
@@ -17,8 +18,9 @@ const ADJECTIVES = ['Silent', 'Misty', 'Neon', 'Crimson', 'Emerald', 'Vast', 'Sw
 const NOUNS = ['Peak', 'Valley', 'Tide', 'Void', 'Gate', 'Path', 'Stream', 'Crown', 'Light', 'Echo']
 
 export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) => {
-  const { toggleSettings, toggleAgentManager, streamingAgents } = useUIStore()
-  const isGenerating = streamingAgents.size > 0
+  const { toggleSettings, toggleAgentManager, streamingAgents, agentStatuses, generationInProgress } = useUIStore()
+  const hasNonIdleStatus = Object.values(agentStatuses).some((status) => status !== 'Idle')
+  const isGenerating = generationInProgress || streamingAgents.size > 0 || hasNonIdleStatus
   const [rooms, setRooms] = useState<Room[]>([])
   
   // Renaming state
@@ -31,18 +33,36 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
 
   const fetchRooms = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/rooms/')
-      if (res.ok) {
-        const data = await res.json()
-        setRooms(data)
-        return data as Room[]
-      }
+      const data = await apiJson<Room[]>('/api/rooms/')
+      setRooms(data)
+      return data
     } catch { return [] }
   }, [])
 
   useEffect(() => { 
-    fetchRooms() 
-  }, [fetchRooms])
+    let cancelled = false
+
+    const loadRooms = async () => {
+      try {
+        const data = await apiJson<Room[]>('/api/rooms/')
+        if (cancelled) {
+          return
+        }
+
+        setRooms(data)
+      } catch {
+        if (!cancelled) {
+          setRooms([])
+        }
+      }
+    }
+
+    void loadRooms()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Auto-select first room if none selected
   useEffect(() => {
@@ -59,22 +79,26 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
 
   const createRoom = async () => {
     const name = generateRandomName()
-    const res = await fetch('http://localhost:8000/api/rooms/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    if (res.ok) {
-      const created: Room = await res.json()
+    try {
+      const created = await apiJson<Room>('/api/rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
       await fetchRooms()
       onSelectRoom(created.id)
+    } catch (error) {
+      console.error('Create room failed:', error)
     }
   }
 
   const deleteRoom = async (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation()
-    const res = await fetch(`http://localhost:8000/api/rooms/${id}`, { method: 'DELETE' })
-    if (res.ok) {
+    try {
+      const res = await apiFetch(`/api/rooms/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        throw new ApiError(res.status, await res.text().catch(() => 'Unknown error'))
+      }
       const updatedRooms = await fetchRooms()
       setMenuOpenId(null)
       setConfirmDeleteId(null)
@@ -82,10 +106,9 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
         const nextRoomId = updatedRooms && updatedRooms.length > 0 ? updatedRooms[0].id : 0
         onSelectRoom(nextRoomId)
       }
-    } else {
-      const detail = await res.json().catch(() => ({ detail: 'Unknown error' }))
-      console.error('Delete failed:', detail)
-      alert(`Failed to delete chat: ${detail.detail || 'Internal error'}`)
+    } catch (error) {
+      console.error('Delete failed:', error)
+      alert(`Failed to delete chat: ${getErrorMessage(error, 'Internal error')}`)
     }
   }
 
@@ -101,22 +124,27 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
       setRenamingId(null)
       return
     }
-    const res = await fetch(`http://localhost:8000/api/rooms/${renamingId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: renamingName.trim() }),
-    })
-    if (res.ok) {
+    try {
+      await apiJson<Room>(`/api/rooms/${renamingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renamingName.trim() }),
+      })
       await fetchRooms()
+    } catch (error) {
+      console.error('Rename failed:', error)
     }
     setRenamingId(null)
   }
 
   const exportRoom = async (id: number, name: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const res = await fetch(`http://localhost:8000/api/rooms/${id}/messages/export`)
-    if (!res.ok) return
-    const md = await res.text()
+    let md = ''
+    try {
+      md = await apiText(`/api/rooms/${id}/messages/export`)
+    } catch {
+      return
+    }
     const blob = new Blob([md], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -129,7 +157,7 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
 
   const triggerEmergencyStop = async () => {
     if (!selectedRoomId) return
-    await fetch(`http://localhost:8000/api/rooms/${selectedRoomId}/emergency-stop`, { method: 'POST' }).catch(console.error)
+    await apiFetch(`/api/rooms/${selectedRoomId}/emergency-stop`, { method: 'POST' }).catch(console.error)
   }
 
   // Handle clicking outside to close menu

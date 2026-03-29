@@ -10,7 +10,11 @@ export function useTypingAudio() {
 
   const getCtx = (): AudioContext => {
     if (!ctxRef.current) {
-      ctxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!AudioContextCtor) {
+        throw new Error('Web Audio API is not available in this browser')
+      }
+      ctxRef.current = new AudioContextCtor()
     }
     return ctxRef.current
   }

@@ -1,16 +1,32 @@
-import { useCallback, useRef } from 'react'
-import { useUIStore } from '../store/uiStore'
+import { useCallback, useEffect, useRef } from 'react'
+import { wsUrlWithAuth } from '../lib/api'
+import { useUIStore, type AgentStatus } from '../store/uiStore'
 
-// Message types received from the backend WebSocket
+export interface TelemetryEntry {
+  agent_name: string
+  tokens_used: number
+  latency_ms: number
+  turn: number
+}
+
+export interface ScratchpadState {
+  consensus: string
+  open_questions: string[]
+  key_ideas: string[]
+}
+
 export type WSEvent =
   | { type: 'token'; agent: string; token: string }
+  | { type: 'agent_message_done'; agent: string; content?: string }
   | { type: 'thinking'; agent: string }
   | { type: 'done' }
   | { type: 'interrupted' }
   | { type: 'error'; error: string }
-  | { type: 'telemetry'; data: any[]; budgets: Record<string, number> }
-  | { type: 'semantic'; annotations: any[]; scratchpad: any }
-  | { type: 'status_update'; statuses: Record<string, string>; scores?: Record<string, number>; reasons?: Record<string, string>; emojis?: Record<string, string> }
+  | { type: 'telemetry'; data: TelemetryEntry[]; budgets: Record<string, number> }
+  | { type: 'budget_update'; budgets: Record<string, number> }
+  | { type: 'activity_stats'; stats: Record<string, number> }
+  | { type: 'semantic'; annotations: Array<Record<string, unknown>>; scratchpad: ScratchpadState }
+  | { type: 'status_update'; statuses: Record<string, AgentStatus>; scores?: Record<string, number>; reasons?: Record<string, string>; emojis?: Record<string, string> }
 
 interface UseArenaSocketOptions {
   roomId: number
@@ -20,12 +36,15 @@ interface UseArenaSocketOptions {
 export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const onEventRef = useRef(onEvent)
-  onEventRef.current = onEvent
+
+  useEffect(() => {
+    onEventRef.current = onEvent
+  }, [onEvent])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const ws = new WebSocket(`ws://localhost:8000/api/chat/${roomId}/stream`)
+    const ws = new WebSocket(wsUrlWithAuth(`/api/chat/${roomId}/stream`))
 
     ws.onmessage = (e) => {
       try {
@@ -33,7 +52,7 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
         if (data.type === 'status_update') {
           const { updateAgentStatus, setAgentScores } = useUIStore.getState()
           Object.entries(data.statuses).forEach(([name, status]) => {
-            updateAgentStatus(name, status as any)
+            updateAgentStatus(name, status)
           })
           if (data.scores) {
             setAgentScores(data.scores)
@@ -59,7 +78,7 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
     ws.onclose = () => console.log('WebSocket closed for room', roomId)
 
     wsRef.current = ws
-  }, [roomId, onEvent])
+  }, [roomId])
 
   const send = useCallback((text: string, mentions?: string[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

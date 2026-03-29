@@ -4,7 +4,13 @@ from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from datetime import timedelta
-from ..core.security import create_access_token, ALLOWED_USER_EMAIL, ACCESS_TOKEN_EXPIRE_MINUTES
+from ..core.route_policy import serialize_route_policies
+from ..core.security import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALLOWED_USER_EMAIL,
+    create_access_token,
+    get_auth_mode,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -12,6 +18,14 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
 class GoogleToken(BaseModel):
     credential: str
+
+
+@router.get("/policy-map")
+def get_policy_map():
+    return {
+        "auth_mode": get_auth_mode(),
+        "routes": serialize_route_policies(),
+    }
 
 @router.post("/verify_google_token")
 def verify_google_token(token_data: GoogleToken):

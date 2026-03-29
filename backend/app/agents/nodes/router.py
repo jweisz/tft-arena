@@ -1,14 +1,82 @@
 import json
+import math
 import re
+import logging
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from ..state import ArenaState
 from ...core.llm import get_llm
 
+logger = logging.getLogger(__name__)
+
 # Turns replenished to each agent's budget when the user sends a message
 BUDGET_REPLENISH_AMOUNT = 3
 # Minimum score (0-10) for an agent to participate in a turn
 PARTICIPATION_THRESHOLD = 3.0
+
+
+def _tokenize(text: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9']+", text.lower()) if len(token) > 2}
+
+
+def _extract_json_object(raw_content: str) -> dict[str, Any] | None:
+    match = re.search(r"```json\s*(\{.*?\})\s*```", raw_content, re.DOTALL)
+    if match:
+        return json.loads(match.group(1))
+
+    start = raw_content.find("{")
+    end = raw_content.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    return json.loads(raw_content[start:end + 1])
+
+
+def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any]]) -> tuple[Dict[str, float], Dict[str, str]]:
+    if not messages:
+        return {agent["name"]: 0.0 for agent in agents}, {agent["name"]: "No conversation context yet." for agent in agents}
+
+    focus_message = next((message for message in reversed(messages) if message.type == "human"), messages[-1])
+    focus_text = str(focus_message.content)
+    focus_tokens = _tokenize(focus_text)
+
+    scores: Dict[str, float] = {}
+    reasons: Dict[str, str] = {}
+
+    guidance_by_agent: Dict[str, set[str]] = {}
+    token_frequency: Dict[str, int] = {}
+    for agent in agents:
+        agent_name = agent["name"]
+        guidance = " ".join([
+            agent.get("role_description", ""),
+            agent.get("relevance_instructions", ""),
+        ]).strip()
+        guidance_tokens = _tokenize(guidance)
+        guidance_by_agent[agent_name] = guidance_tokens
+        for token in guidance_tokens:
+            token_frequency[token] = token_frequency.get(token, 0) + 1
+
+    for agent in agents:
+        agent_name = agent["name"]
+        guidance_tokens = guidance_by_agent.get(agent_name, set())
+        overlap = focus_tokens & guidance_tokens
+
+        if agent_name.lower() in focus_text.lower():
+            score = 9.5
+            reasons[agent_name] = "Agent was named directly in the message."
+        elif overlap:
+            weighted_overlap = sum(1.0 / max(1, token_frequency.get(token, 1)) for token in overlap)
+            normalized_overlap = weighted_overlap / max(1.0, math.sqrt(len(guidance_tokens) + 1.0))
+            score = min(10.0, round(normalized_overlap * 18.0, 1))
+            matched_terms = ", ".join(sorted(list(overlap))[:3])
+            reasons[agent_name] = f"Matched topic cues: {matched_terms}."
+        else:
+            score = 0.0
+            reasons[agent_name] = "No strong keyword overlap with its focus areas."
+
+        scores[agent_name] = score
+
+    return scores, reasons
 
 async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, Any]]) -> tuple[Dict[str, float], Dict[str, str]]:
     """
@@ -20,68 +88,83 @@ async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, An
     
     # Context window: Use the last 5 messages to provide thematic flow.
     recent_msgs = messages[-5:]
-    history_context = "\n".join([
-        f"- {m.type.upper()}: {str(m.content)[:300]}" for m in recent_msgs
-    ])
+    history_context = [
+        {"type": m.type, "content": str(m.content)[:500]}
+        for m in recent_msgs
+    ]
 
-    agent_context = "\n".join([f"- {a['name']}: {a['role_description']}" for a in agents])
-    
-    prompt = f"""
-    You are a conversation moderator for an AI Arena.
-    Your goal is to ensure a high-quality discussion by selecting the most relevant agents for the next turn.
+    candidate_context = [
+        {
+            "name": agent["name"],
+            "role_description": agent.get("role_description", ""),
+            "relevance_instructions": agent.get("relevance_instructions", ""),
+        }
+        for agent in agents
+    ]
 
-    **CRITICAL**: If the human asks a question or makes a statement, SOMEONE must be the best candidate to respond. Do not leave the user hanging unless the message is completely nonsensical.
+    system_prompt = """
+You are a conversation router for a multi-agent arena.
+Score how relevant each agent is to replying to the current conversation state.
 
-    CONVERSATION HISTORY (Last 5 messages):
-    {history_context}
+Prioritize the last human message when one exists, but also consider the immediate thread.
+Use each agent's relevance instructions as the primary rubric for what they should care about.
+Do not distribute scores evenly unless the agents are genuinely equally relevant.
 
-    AVAILABLE AGENTS:
-    {agent_context}
+Scoring scale:
+- 0-2: Not relevant.
+- 3-5: Mildly or secondarily relevant.
+- 6-8: Strong match.
+- 9-10: Direct hit or explicitly requested.
 
-    DISTRIBUTIONAL GOAL:
-    - Ideally, mark the 1-3 most relevant agents with high scores.
-    - Be discriminating, but don't be afraid to score an agent above 3.0 if they are even moderately helpful.
-    - An agent scores HIGH (10) if they are directly addressed or their persona is an expert match.
-    - An agent scores LOW (0-2) only if they are clearly irrelevant or would provide noise.
+Return ONLY JSON with exactly two top-level keys:
+- scores: object of agent name -> number
+- reasons: object of agent name -> short explanation
+""".strip()
 
-    SCORING SCALE:
-    - 0-2: Irrelevant / Generic listener.
-    - 3-5: Tangentially relevant / Can add secondary perspective.
-    - 6-8: Strongly relevant / Core to the current thread.
-    - 9-10: Perfect thematic match / Directly mentioned.
-
-    Return ONLY a valid JSON object with two keys:
-    - "scores": object mapping agent names to numerical scores (0-10)
-    - "reasons": object mapping agent names to a single short sentence (max 12 words) explaining why they scored that way
-
-    Example:
-    {{"scores": {{"Devil's Advocate": 1.5, "Muse": 8.0}}, "reasons": {{"Devil's Advocate": "Topic is factual, not suited to contrarian debate.", "Muse": "Creative framing directly matches the question asked."}}}}
-    """
+    human_prompt = json.dumps({
+        "conversation": history_context,
+        "agents": candidate_context,
+        "requirements": {
+            "score_every_agent": True,
+            "reason_max_words": 16,
+            "prefer_1_to_3_top_agents": True,
+        },
+    }, ensure_ascii=True)
     
     try:
         # Use a fast model for routing decisions
         llm = get_llm(provider="openai", model_name="gpt-4o-mini", temperature=0)
-        response = await llm.ainvoke([SystemMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=human_prompt),
+        ])
         
         # Clean response text in case of markdown formatting or filler
         raw_content = response.content.strip()
-        
-        # Use regex to find the last JSON block in case of conversational filler
-        # This handles cases like: "Sure! Here is the JSON: ```json ... ```" or just "```json ... ```"
-        match = re.search(r"(\{.*\})", raw_content, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-            parsed = json.loads(json_str)
-            scores = {name: float(score) for name, score in parsed.get("scores", {}).items()}
-            reasons = {name: str(reason) for name, reason in parsed.get("reasons", {}).items()}
-            return scores, reasons
-        else:
-            print(f"Warning: No JSON match found in router output: {raw_content[:200]}...")
-    except Exception as e:
-        print(f"Warning: Speaker importance evaluation failed: {e}")
-        
-    # Default to a low 'noise floor' on error to prevent flooding.
-    return {a["name"]: 1.0 for a in agents}, {a["name"]: "Routing evaluation failed." for a in agents}
+        parsed = _extract_json_object(raw_content)
+        if parsed is None:
+            logger.warning("router scoring returned non-json payload preview=%s", raw_content[:200])
+            return _heuristic_importance_scores(messages, agents)
+
+        heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
+        scores = {}
+        reasons = {}
+        for agent in agents:
+            agent_name = agent["name"]
+            raw_score = parsed.get("scores", {}).get(agent_name, heuristic_scores.get(agent_name, 0.0))
+            try:
+                score = max(0.0, min(10.0, float(raw_score)))
+            except (TypeError, ValueError):
+                score = heuristic_scores.get(agent_name, 0.0)
+
+            scores[agent_name] = score
+            reasons[agent_name] = str(parsed.get("reasons", {}).get(agent_name, heuristic_reasons.get(agent_name, "No reason provided.")))
+
+        return scores, reasons
+    except Exception:
+        logger.exception("router speaker-importance evaluation failed")
+
+    return _heuristic_importance_scores(messages, agents)
 
 
 async def router_node(state: ArenaState) -> Dict[str, Any]:
@@ -210,7 +293,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         top_agent = sorted_candidates[0]
         if scores.get(top_agent["name"], 0) >= 1.0:
             next_speakers = [top_agent["name"]]
-            agent_scores[top_agent["name"]] = max(agent_scores.get(top_agent["name"], 0), PARTICIPATION_THRESHOLD)
+            agent_reasons[top_agent["name"]] = f"{agent_reasons.get(top_agent['name'], 'Best available match.')} Selected as the best available fallback."
     
     # Set status for next speakers
     for name in next_speakers:

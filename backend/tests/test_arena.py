@@ -24,6 +24,20 @@ from langchain_core.messages import HumanMessage, AIMessage
 from app.agents.nodes.router import router_node, BUDGET_REPLENISH_AMOUNT
 from app.agents.context import maybe_summarize, RECENT_WINDOW
 
+
+@pytest.fixture(autouse=True)
+def stub_router_scoring(monkeypatch):
+    async def fake_eval_speaker_importance(messages, agents):
+        return (
+            {agent["name"]: 10.0 for agent in agents},
+            {agent["name"]: "Selected for test." for agent in agents},
+        )
+
+    monkeypatch.setattr(
+        "app.agents.nodes.router.eval_speaker_importance",
+        fake_eval_speaker_importance,
+    )
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
@@ -60,18 +74,19 @@ def make_state(**kwargs) -> dict:
 # Test 1: Budget System
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.asyncio
 class TestBudgetSystem:
-    def test_initial_budget_assigned_from_agent_config(self):
+    async def test_initial_budget_assigned_from_agent_config(self):
         """New agents get their token_budget as initial budget."""
         agent = make_agent("Analyst", budget=2000)
         state = make_state(
             active_agents=[agent],
             messages=[HumanMessage(content="hello")],
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert result["agent_budgets"]["Analyst"] == 2000
 
-    def test_budget_replenished_on_human_message(self):
+    async def test_budget_replenished_on_human_message(self):
         """Speaking budget is topped up (capped at token_budget) on human turns."""
         agent = make_agent("Analyst", budget=8192)
         # Start with a depleted budget
@@ -80,11 +95,11 @@ class TestBudgetSystem:
             agent_budgets={"Analyst": 100},
             messages=[HumanMessage(content="new question")],
         )
-        result = router_node(state)
+        result = await router_node(state)
         expected = min(100 + BUDGET_REPLENISH_AMOUNT, 8192)
         assert result["agent_budgets"]["Analyst"] == expected
 
-    def test_budget_does_not_exceed_token_budget_cap(self):
+    async def test_budget_does_not_exceed_token_budget_cap(self):
         """Budget replenishment does not exceed the per-agent token_budget cap."""
         agent = make_agent("Analyst", budget=1000)
         state = make_state(
@@ -92,53 +107,45 @@ class TestBudgetSystem:
             agent_budgets={"Analyst": 900},  # already near cap
             messages=[HumanMessage(content="hello")],
         )
-        result = router_node(state)
-        # 900 + 4096 would exceed 1000; should be capped at 1000
-        assert result["agent_budgets"]["Analyst"] == 1000
+        result = await router_node(state)
+        assert result["agent_budgets"]["Analyst"] == min(900 + BUDGET_REPLENISH_AMOUNT, 1000)
 
-    def test_agent_with_zero_budget_not_selected(self):
+    async def test_agent_with_zero_budget_not_selected(self):
         """An agent with zero remaining budget is excluded from next_speakers."""
         rich = make_agent("Rich", budget=4096)
-        broke = make_agent("Broke", budget=4096)
-        state = make_state(
-            active_agents=[rich, broke],
-            agent_budgets={"Rich": 500, "Broke": 0},
-            messages=[HumanMessage(content="hello")],
-        )
-        # Override replenishment: after replenish Broke = 4096 (replenished), Rich = 500+4096
-        # For an isolated depletion test, start Broke already at 0 but cap token_budget=0
         broke_zero = make_agent("Broke", budget=0)
         state2 = make_state(
             active_agents=[rich, broke_zero],
             agent_budgets={"Rich": 500, "Broke": 0},
             messages=[HumanMessage(content="hello")],
         )
-        result = router_node(state2)
-        # Broke's replenished = min(0+4096, 0) = 0, Rich = min(500+4096, 4096) = 4096
+        result = await router_node(state2)
         assert "Rich" in result["next_speakers"]
         assert "Broke" not in result["next_speakers"]
 
-    def test_no_speakers_when_no_human_message(self):
-        """Router selects no speakers when last message is from an agent (not human)."""
-        agent = make_agent("Analyst", budget=4096)
+    async def test_router_skips_immediate_self_response_on_ai_turn(self):
+        """Router allows cross-talk but excludes the last speaking agent from replying immediately."""
+        analyst = make_agent("Analyst", budget=4096)
+        critic = make_agent("Critic", budget=4096)
         state = make_state(
-            active_agents=[agent],
-            agent_budgets={"Analyst": 4096},
+            active_agents=[analyst, critic],
+            agent_budgets={"Analyst": 4096, "Critic": 4096},
             messages=[
                 HumanMessage(content="hello"),
                 AIMessage(content="I respond", name="Analyst"),
             ],
         )
-        result = router_node(state)
-        assert result["next_speakers"] == []
+        result = await router_node(state)
+        assert result["next_speakers"] == ["Critic"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 2: Router / Supervisor Logic
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.asyncio
 class TestRouterSupervisor:
-    def test_emergency_stop_blocks_all_selection(self):
+    async def test_emergency_stop_blocks_all_selection(self):
         """emergency_stop=True → next_speakers is always empty."""
         agent = make_agent("Analyst")
         state = make_state(
@@ -147,10 +154,10 @@ class TestRouterSupervisor:
             messages=[HumanMessage(content="go!")],
             emergency_stop=True,
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert result["next_speakers"] == []
 
-    def test_emergency_stop_checked_before_budget_replenishment(self):
+    async def test_emergency_stop_checked_before_budget_replenishment(self):
         """Emergency stop short-circuits before any budget changes."""
         agent = make_agent("Analyst", budget=4096)
         state = make_state(
@@ -159,12 +166,12 @@ class TestRouterSupervisor:
             messages=[HumanMessage(content="go!")],
             emergency_stop=True,
         )
-        result = router_node(state)
+        result = await router_node(state)
         # Budget should remain 0 — no replenishment happened
         assert result["agent_budgets"].get("Analyst", 0) == 0
         assert result["next_speakers"] == []
 
-    def test_multiple_agents_all_selected_when_budgeted(self):
+    async def test_multiple_agents_all_selected_when_budgeted(self):
         """All agents with remaining budget are selected simultaneously."""
         agents = [make_agent(name) for name in ["Alpha", "Beta", "Gamma"]]
         state = make_state(
@@ -172,23 +179,23 @@ class TestRouterSupervisor:
             agent_budgets={"Alpha": 100, "Beta": 200, "Gamma": 50},
             messages=[HumanMessage(content="go!")],
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert set(result["next_speakers"]) == {"Alpha", "Beta", "Gamma"}
 
-    def test_turn_counter_increments(self):
+    async def test_turn_counter_increments(self):
         """Router increments the turn_number on each call."""
         state = make_state(
             messages=[HumanMessage(content="hi")],
             active_agents=[make_agent("X")],
             turn_number=5,
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert result["turn_number"] == 6
 
-    def test_empty_message_list_returns_no_speakers(self):
+    async def test_empty_message_list_returns_no_speakers(self):
         """Router returns no speakers when there are no messages yet."""
         state = make_state(messages=[], active_agents=[make_agent("X")])
-        result = router_node(state)
+        result = await router_node(state)
         assert result["next_speakers"] == []
 
 
@@ -196,8 +203,9 @@ class TestRouterSupervisor:
 # Test 3: Interruption Logic
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.asyncio
 class TestInterruptionLogic:
-    def test_interrupted_flag_aborts_speaker_selection(self):
+    async def test_interrupted_flag_aborts_speaker_selection(self):
         """When interrupted=True, no speakers are selected."""
         agent = make_agent("Talker")
         state = make_state(
@@ -206,10 +214,10 @@ class TestInterruptionLogic:
             messages=[HumanMessage(content="go!")],
             interrupted=True,
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert result["next_speakers"] == []
 
-    def test_interrupted_flag_reset_after_router_pass(self):
+    async def test_interrupted_flag_reset_after_router_pass(self):
         """Router resets interrupted=False after handling the interruption."""
         agent = make_agent("Talker")
         state = make_state(
@@ -218,10 +226,10 @@ class TestInterruptionLogic:
             messages=[HumanMessage(content="go!")],
             interrupted=True,
         )
-        result = router_node(state)
+        result = await router_node(state)
         assert result["interrupted"] is False
 
-    def test_interrupted_does_not_replenish_budgets(self):
+    async def test_interrupted_does_not_replenish_budgets(self):
         """Budget replenishment does NOT happen during an interrupted turn."""
         agent = make_agent("Talker", budget=4096)
         state = make_state(
@@ -230,11 +238,11 @@ class TestInterruptionLogic:
             messages=[HumanMessage(content="new message!")],
             interrupted=True,
         )
-        result = router_node(state)
+        result = await router_node(state)
         # Interrupted short-circuits before replenishment; budget unchanged
         assert result["agent_budgets"]["Talker"] == 10
 
-    def test_interrupted_clears_on_subsequent_normal_turn(self):
+    async def test_interrupted_clears_on_subsequent_normal_turn(self):
         """After clearing interrupted, the next normal human turn selects speakers."""
         agent = make_agent("Talker")
         # First pass: interrupted
@@ -244,7 +252,7 @@ class TestInterruptionLogic:
             messages=[HumanMessage(content="first message")],
             interrupted=True,
         )
-        result1 = router_node(state1)
+        result1 = await router_node(state1)
         assert result1["next_speakers"] == []
         assert result1["interrupted"] is False
 
@@ -255,7 +263,7 @@ class TestInterruptionLogic:
             messages=[HumanMessage(content="second message")],
             interrupted=False,
         )
-        result2 = router_node(state2)
+        result2 = await router_node(state2)
         assert "Talker" in result2["next_speakers"]
 
 

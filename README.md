@@ -1,94 +1,135 @@
-# 🏟️ TFT Arena
+# TFT Arena
 
-**The ultimate multi-agent reasoning bench.** Connect LLMs, orchestrate debates, and synthesize deep insights in real-time.
+Multi-agent reasoning workspace with FastAPI + LangGraph backend and React + Vite frontend.
 
-[![MIT License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61dafb.svg)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange.svg)](https://www.langchain.com/langgraph)
+## Overview
 
----
+TFT Arena runs multiple configurable agent personas in a shared conversation. A router scores relevance each turn, selected agents respond, and the UI streams token output, telemetry, and semantic scratchpad updates over WebSocket.
 
-## 🚀 Overview
+Key capabilities:
 
-TFT Arena is a sophisticated multi-agent environment designed for complex problem-solving, collaborative brainstorming, and automated synthesis. Unlike standard chat interfaces, TFT Arena uses an **Importance-Based Router** to ensure that only the most relevant agents contribute to the conversation at any given time, preventing "agent noise" and maximizing signal.
+- Importance-based router for selective participation.
+- Streaming token responses with per-agent telemetry and turn budgets.
+- Semantic scratchpad updates (consensus, key ideas, open questions).
+- Provider support for OpenAI, Anthropic, Gemini, and Ollama.
 
-### ✨ Key Features
+## Repo Layout
 
--   **🧠 Intelligent Orchestration**: Powered by LangGraph, our router evaluates every turn to determine which agents are most qualified to respond.
--   **📈 Real-Time Telemetry**: Track agent performance with live Mean & Standard Deviation response times, token budgets, and relevance scores.
--   **📝 Semantic Scratchpad**: A dedicated "whiteboard" agent continuously listens to the conversation, distilling consensus, key ideas, and open questions into a live-updating summary.
--   **🔌 Provider Agnostic**: Native support for OpenAI, Anthropic, Google Gemini, and local models via Ollama.
--   **🛡️ Secure-by-Design**: No more `.env` file management. Configure all API keys and global preferences directly within the secure, database-backed UI settings.
+- `backend/`: FastAPI app, LangGraph orchestration, SQLAlchemy models, pytest suite.
+- `frontend/`: React app, Vite build, Zustand state, Vitest suite.
+- `docker-compose.dev.yml`: Docker dev workflow with file sync/watch.
+- `docker-compose.yml`: Docker production-style build/runtime.
 
----
+## Prerequisites
 
-## 🏗️ Architecture
+- Python 3.11+
+- Node 20+
+- npm
+- Docker + Docker Compose (optional)
 
-The system is built on a modern, event-driven stack designed for low-latency multi-agent interactions.
+## Local Development
 
-```mermaid
-graph TD
-    User((User)) -->|WebSocket| Backend[FastAPI Server]
-    Backend -->|State Management| DB[(SQLite / tft_arena.db)]
-    Backend -->|Orchestration| LangGraph{LangGraph Engine}
-    
-    subgraph Agent Arena
-        LangGraph -->|Importance Check| Router[Router Node]
-        Router -->|Score > 3.0| Agent1[Agent Node A]
-        Router -->|Score > 3.0| Agent2[Agent Node B]
-        Router -.->|Score < 3.0| Silenced[Silenced Agent]
-    end
-    
-    Agent1 -->|Generate| Backend
-    Agent2 -->|Generate| Backend
-    Backend -->|Stream| Frontend[React / Vite UI]
-    Frontend -->|Telemetry| User
+### 1) Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install uv
+uv sync --extra dev
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----
+Compatibility fallback:
 
-## 📦 Getting Started
+```bash
+pip install -r requirements.txt
+```
 
-### Prerequisites
+Backend API/docs:
 
--   [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
--   (Optional) [Ollama](https://ollama.com/) for local model support
+- `http://localhost:8000/docs`
 
-### Quick Start
+Health checks:
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/your-username/tft-arena.git
-    cd tft-arena
-    ```
+- Canonical: `GET /api/health`
+- Legacy alias: `GET /health`
 
-2.  **Launch the Arena**
-    ```bash
-    docker compose up --build
-    ```
+Example:
 
-3.  **Access the UI**
-    Open [http://localhost:5173](http://localhost:5173) in your browser.
+```bash
+curl http://localhost:8000/api/health
+curl http://localhost:8000/health
+```
 
-4.  **Configure API Keys**
-    Click on **Settings** in the bottom-left corner to securely input your OpenAI, Anthropic, or Gemini keys. These are stored locally in your database and never shared.
+### 2) Frontend
 
----
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## 🛠️ Tech Stack
+Frontend app:
 
--   **Frontend**: React 18, Vite, TypeSafe Store (Zustand-style), CSS-in-JS.
--   **Backend**: Python 3.11, FastAPI, SQLAlchemy, LangGraph, LiteLLM.
--   **Database**: SQLite (for portability) and ChromaDB (for long-term agent memory).
--   **Real-time**: High-throughput WebSockets for streaming agent responses and telemetry data.
+- `http://localhost:5173`
 
----
+## Docker Workflows
 
-## 📄 License
+### Dev watch mode (hot reload)
 
-Distributed under the **Apache License 2.0**. See `LICENSE` for more information.
+```bash
+docker compose -f docker-compose.dev.yml watch
+```
 
----
+Ports:
 
-*Built with ❤️ by the TFT Arena team.*
+- frontend: `5173`
+- backend: `8000`
+
+### Production-style compose
+
+```bash
+docker compose -f docker-compose.yml up --build
+```
+
+Ports:
+
+- frontend: `3000`
+- backend: `8000`
+
+## Auth Mode (Current Behavior)
+
+The project is currently local-first and permissive by default.
+
+- If `ALLOWED_USER_EMAIL` is unset, backend auth mode is `local-open`.
+- If `ALLOWED_USER_EMAIL` is set, backend auth mode becomes allowlist JWT validation.
+
+Policy introspection endpoint:
+
+- `GET /api/auth/policy-map`
+
+This endpoint returns the current auth mode and route policy map (REST + WS), used for auth-readiness without forcing full auth rollout yet.
+
+## Quality Gates
+
+Backend:
+
+```bash
+cd backend
+uv sync --extra dev
+uv run python -m pytest
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run lint
+npm test
+npm run build
+```
+
+## License
+
+Apache 2.0. See `LICENSE`.

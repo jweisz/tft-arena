@@ -1,6 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useUIStore, type ColorPalette, type ThemeFont } from '../store/uiStore'
 import { RefreshCw, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { apiFetch, apiJson } from '../lib/api'
+
+interface ProviderModel {
+  provider: string
+  models: string[]
+}
+
+const FONT_OPTIONS: Array<{ value: ThemeFont; label: string; fontFamily: string }> = [
+  { value: 'modern', label: 'Modern Sans (Inter / Segoe UI)', fontFamily: "'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },
+  { value: 'rounded', label: 'Rounded Sans (Avenir Rounded / ui-rounded)', fontFamily: "'Avenir Next Rounded', 'Arial Rounded MT Bold', ui-rounded, 'Nunito', 'Quicksand', 'Trebuchet MS', sans-serif" },
+  { value: 'classic', label: 'Classic UI (System)', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" },
+  { value: 'serif', label: 'Editorial Serif (Palatino / Garamond)', fontFamily: "'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Garamond, Georgia, serif" },
+  { value: 'monospace', label: 'Monospace Classic (Courier)', fontFamily: "'Courier New', Courier, 'Nimbus Mono L', 'Liberation Mono', monospace" },
+  { value: 'terminal-retro', label: 'Terminal Retro (VT-style)', fontFamily: "'VT323', 'Lucida Console', 'Courier New', Monaco, monospace" },
+  { value: 'terminal-modern', label: 'Terminal Modern (JetBrains / Cascadia)', fontFamily: "'JetBrains Mono', 'Cascadia Mono', 'Fira Code', Menlo, Consolas, monospace" },
+  { value: 'code-modern', label: 'Code Modern (IBM Plex / Source Code Pro)', fontFamily: "'IBM Plex Mono', 'Source Code Pro', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace" },
+]
 
 export const SettingsModal: React.FC = () => {
   const { isSettingsOpen, toggleSettings, palette, themeFont, setPalette, setThemeFont } = useUIStore()
@@ -24,7 +41,7 @@ export const SettingsModal: React.FC = () => {
     // If a URL is provided, save it to the DB first for immediate persistence
     if (saveUrl) {
       try {
-        await fetch('http://localhost:8000/api/settings/', {
+        await apiFetch('/api/settings/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ollama_base_url: saveUrl })
@@ -35,48 +52,62 @@ export const SettingsModal: React.FC = () => {
     }
 
     try {
-      const res = await fetch('http://localhost:8000/api/providers/models')
-      if (res.ok) {
-        const providers = await res.json()
-        const ollama = providers.find((p: any) => p.provider === 'ollama')
-        if (ollama && ollama.models.length > 0) {
-          setOllamaStatus('connected')
-          setOllamaModelCount(ollama.models.length)
-        } else if (ollama) {
-          // Connected to Ollama but no models found
-          setOllamaStatus('connected')
-          setOllamaModelCount(0)
-        } else {
-          setOllamaStatus('error')
-        }
+      const providers = await apiJson<ProviderModel[]>('/api/providers/models')
+      const ollama = providers.find((provider) => provider.provider === 'ollama')
+      if (ollama && ollama.models.length > 0) {
+        setOllamaStatus('connected')
+        setOllamaModelCount(ollama.models.length)
+      } else if (ollama) {
+        // Connected to Ollama but no models found
+        setOllamaStatus('connected')
+        setOllamaModelCount(0)
       } else {
         setOllamaStatus('error')
       }
-    } catch (err) {
+    } catch {
       setOllamaStatus('error')
     }
   }, [])
 
   useEffect(() => {
-    if (isSettingsOpen) {
-      fetch('http://localhost:8000/api/settings/')
-        .then(res => res.json())
-        .then(data => {
+    let cancelled = false
+
+    const loadSettings = async () => {
+      if (!isSettingsOpen) {
+        return
+      }
+
+      try {
+        const data = await apiJson<Record<string, string | number | null>>('/api/settings/')
+        if (!cancelled) {
           if (data.ollama_base_url) {
-            setOllamaUrl(data.ollama_base_url)
+            setOllamaUrl(String(data.ollama_base_url))
           }
-          if (data.default_agent_turn_budget !== undefined) setDefaultBudget(data.default_agent_turn_budget)
-          if (data.global_system_instruction !== undefined) setGlobalInstruction(data.global_system_instruction || '')
-        })
-        .catch(console.error)
-      
-      // Initial check on open
-      checkOllamaConnection()
+          if (data.default_agent_turn_budget !== undefined) {
+            setDefaultBudget(Number(data.default_agent_turn_budget))
+          }
+          if (data.global_system_instruction !== undefined) {
+            setGlobalInstruction(String(data.global_system_instruction || ''))
+          }
+        }
+      } catch (error) {
+        console.error(error)
+      }
+
+      if (!cancelled) {
+        await checkOllamaConnection()
+      }
+    }
+
+    void loadSettings()
+
+    return () => {
+      cancelled = true
     }
   }, [isSettingsOpen, checkOllamaConnection])
 
   const handleSave = async () => {
-    const payload: any = {}
+    const payload: Record<string, string | number> = {}
     if (openaiKey) payload.openai_api_key = openaiKey
     if (anthropicKey) payload.anthropic_api_key = anthropicKey
     if (geminiKey) payload.google_api_key = geminiKey
@@ -86,7 +117,7 @@ export const SettingsModal: React.FC = () => {
     
     // Fire and forget save
     if (Object.keys(payload).length > 0) {
-      fetch('http://localhost:8000/api/settings/', {
+      apiFetch('/api/settings/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -204,11 +235,11 @@ export const SettingsModal: React.FC = () => {
                 onChange={(e) => setThemeFont(e.target.value as ThemeFont)}
                 style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
               >
-                <option value="modern">Modern (Inter, Sans-Serif)</option>
-                <option value="monospace">Monospace (Courier New)</option>
-                <option value="classic">Classic (System UI)</option>
-                <option value="serif">Serif (Georgia, Merriweather)</option>
-                <option value="rounded">Rounded (Nunito, Quicksand)</option>
+                {FONT_OPTIONS.map((fontOption) => (
+                  <option key={fontOption.value} value={fontOption.value} style={{ fontFamily: fontOption.fontFamily }}>
+                    {fontOption.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

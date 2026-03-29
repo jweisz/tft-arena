@@ -62,23 +62,35 @@
 
 /* Font Typography sets */
 :root[data-font="modern"] {
-  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
-}
-
-:root[data-font="monospace"] {
-  --font-family: 'Courier New', Courier, monospace;
-}
-
-:root[data-font="classic"] {
-  --font-family: '-apple-system', BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-}
-
-:root[data-font="serif"] {
-  --font-family: 'Georgia', 'Merriweather', serif;
+  --font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 :root[data-font="rounded"] {
-  --font-family: 'Nunito', 'Quicksand', 'Varela Round', system-ui, sans-serif;
+  --font-family: 'Avenir Next Rounded', 'Arial Rounded MT Bold', ui-rounded, 'Nunito', 'Quicksand', 'Trebuchet MS', sans-serif;
+}
+
+:root[data-font="classic"] {
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+:root[data-font="serif"] {
+  --font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Garamond, Georgia, serif;
+}
+
+:root[data-font="monospace"] {
+  --font-family: 'Courier New', Courier, 'Nimbus Mono L', 'Liberation Mono', monospace;
+}
+
+:root[data-font="terminal-retro"] {
+  --font-family: 'VT323', 'Lucida Console', 'Courier New', Monaco, monospace;
+}
+
+:root[data-font="terminal-modern"] {
+  --font-family: 'JetBrains Mono', 'Cascadia Mono', 'Fira Code', Menlo, Consolas, monospace;
+}
+
+:root[data-font="code-modern"] {
+  --font-family: 'IBM Plex Mono', 'Source Code Pro', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
 }
 
 /* Fallback if no font set */

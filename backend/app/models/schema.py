@@ -43,7 +43,9 @@ class Agent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
     role_description = Column(Text, nullable=False)
+    relevance_instructions = Column(Text, nullable=False, default="")
     system_prompt = Column(Text, nullable=False)
     avatar_url = Column(String, nullable=True)
     emoji = Column(String, default="🤖")

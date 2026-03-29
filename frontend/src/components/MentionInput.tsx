@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { apiJson } from '../lib/api'
 
 interface Agent {
   id: number
@@ -20,20 +21,37 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
   const editorRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
 
-  const fetchAgents = useCallback(async () => {
-    if (!roomId) return
-    try {
-      const res = await fetch(`http://localhost:8000/api/rooms/${roomId}/agents`)
-      if (res.ok) {
-        const data: Agent[] = await res.json()
-        setAgents(data.filter(a => a.is_active).sort((a, b) => a.name.localeCompare(b.name)))
-      }
-    } catch { /* ignored */ }
-  }, [roomId])
-
   useEffect(() => {
-    fetchAgents()
-  }, [fetchAgents])
+    let cancelled = false
+
+    const loadAgents = async () => {
+      if (!roomId) {
+        if (!cancelled) {
+          setAgents([])
+        }
+        return
+      }
+
+      try {
+        const data = await apiJson<Agent[]>(`/api/rooms/${roomId}/agents`)
+        if (cancelled) {
+          return
+        }
+
+        setAgents(data.filter(a => a.is_active).sort((a, b) => a.name.localeCompare(b.name)))
+      } catch {
+        if (!cancelled) {
+          setAgents([])
+        }
+      }
+    }
+
+    void loadAgents()
+
+    return () => {
+      cancelled = true
+    }
+  }, [roomId])
 
   const filteredAgents = agents.filter(a => 
     a.name.toLowerCase().includes(filter.toLowerCase())
@@ -49,8 +67,8 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     
     // Find the "@" and the filter text to replace it
     // This is a simplified approach: we assume the cursor is right after the filter text
-    let node = range.startContainer
-    let offset = range.startOffset
+    const node = range.startContainer
+    const offset = range.startOffset
     
     // We need to find the "@" back from the current position
     const text = node.textContent || ''
@@ -112,6 +130,35 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     }
   }
 
+  const insertPlainTextAtCursor = (text: string) => {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+
+    const textNode = document.createTextNode(text)
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.collapse(true)
+
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const plainText = e.clipboardData.getData('text/plain')
+    if (!plainText) {
+      return
+    }
+
+    insertPlainTextAtCursor(plainText)
+    handleInput()
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showPopup) {
       if (e.key === 'ArrowDown') {
@@ -163,7 +210,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
             mentionsSet.add(name)
           }
         } else {
-          for (let child of Array.from(node.childNodes)) {
+          for (const child of Array.from(node.childNodes)) {
             walk(child)
           }
           if (el.tagName === 'DIV' || el.tagName === 'BR' || el.tagName === 'P') {
@@ -228,8 +275,8 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
         ref={editorRef}
         contentEditable={true}
         onInput={handleInput}
+        onPaste={handlePaste}
         onKeyDown={handleKeyDown}
-        placeholder="Type your thought… (Enter to send, @ to mention)"
         style={{
           width: '100%',
           minHeight: '80px',

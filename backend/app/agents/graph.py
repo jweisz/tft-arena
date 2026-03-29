@@ -1,5 +1,5 @@
 from langgraph.graph import StateGraph, END
-from langgraph.constants import Send
+from langgraph.types import Send
 from .state import ArenaState
 from .nodes.router import router_node
 from .nodes.agent import agent_node

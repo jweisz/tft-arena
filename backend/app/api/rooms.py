@@ -15,7 +15,7 @@ def create_room(room_in: pydantic_models.RoomCreate, db: Session = Depends(get_d
     db.refresh(db_room)
     
     # Auto-associate all global agents as active
-    all_agents = db.query(schema.Agent).all()
+    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
     for agent in all_agents:
         room_agent = schema.RoomAgent(room_id=db_room.id, agent_id=agent.id, is_active=True)
         db.add(room_agent)
@@ -67,7 +67,7 @@ def get_room_agents(room_id: int, db: Session = Depends(get_db)):
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
         
-    all_agents = db.query(schema.Agent).all()
+    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
     # Get active states for this room
     active_mappings = {
         ra.agent_id: ra.is_active 
@@ -125,7 +125,7 @@ def bulk_active_room_agents(room_id: int, active: bool, db: Session = Depends(ge
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
         
-    all_agents = db.query(schema.Agent).all()
+    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
     for agent in all_agents:
         mapping = db.query(schema.RoomAgent).filter(
             schema.RoomAgent.room_id == room_id,

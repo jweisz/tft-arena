@@ -5,11 +5,8 @@ WORKDIR /app
 # Install uv for fast dependency management
 RUN pip install uv
 
-COPY requirements.txt .
-RUN uv pip install --system -r requirements.txt
-RUN uv pip install --system google-auth langchain-community
-
 COPY . .
+RUN uv pip install --system -r requirements.txt
 
 EXPOSE 8000
 
