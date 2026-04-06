@@ -26,6 +26,8 @@ class GlobalSettings(Base):
 
     default_agent_turn_budget = Column(Integer, default=3)
     global_system_instruction = Column(Text, nullable=True)
+    non_agent_provider = Column(String, nullable=True)
+    non_agent_model = Column(String, nullable=True)
 
 class Room(Base):
     __tablename__ = "rooms"

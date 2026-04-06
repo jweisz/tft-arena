@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Dict, Any, List
 from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
-from ...core.llm import get_llm
+from ...core.llm import get_llm, get_non_agent_model_config
 from ...models.db import SessionLocal
 from ...models.schema import Agent, GlobalSettings
 
@@ -123,8 +123,8 @@ def _build_model_candidates(initial_provider: str, initial_model: str) -> list[t
 
 async def run_semantic_agent(
     messages: List[BaseMessage],
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> Dict[str, Any]:
     """
     Run the semantic agent asynchronously.
@@ -137,6 +137,9 @@ async def run_semantic_agent(
         SystemMessage(content=SEMANTIC_SYSTEM_PROMPT),
         HumanMessage(content=f"Conversation so far:\n\n{context}\n\nAnalyze the latest human message.")
     ]
+
+    if not provider or not model:
+        provider, model = get_non_agent_model_config()
 
     for candidate_provider, candidate_model in _build_model_candidates(provider, model):
         try:

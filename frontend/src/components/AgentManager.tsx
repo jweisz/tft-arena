@@ -32,6 +32,18 @@ interface ProviderModel {
   models: string[]
 }
 
+const encodeModelSelection = (provider: string, model: string) => `${provider}::${encodeURIComponent(model)}`
+
+const decodeModelSelection = (value: string): { provider: string; model: string } => {
+  const sepIndex = value.indexOf('::')
+  if (sepIndex === -1) {
+    return { provider: 'ollama', model: value }
+  }
+  const provider = value.slice(0, sepIndex)
+  const model = decodeURIComponent(value.slice(sepIndex + 2))
+  return { provider, model }
+}
+
 export const AgentManager: React.FC = () => {
   const { isAgentManagerOpen, toggleAgentManager, triggerAgentsRefresh } = useUIStore()
   const [agents, setAgents] = useState<Agent[]>([])
@@ -376,9 +388,9 @@ export const AgentManager: React.FC = () => {
                 </div>
               ) : (
                 <select
-                  value={`${editing.provider}:${editing.model}`}
+                  value={encodeModelSelection(editing.provider, editing.model)}
                   onChange={e => {
-                    const [provider, model] = e.target.value.split(':')
+                    const { provider, model } = decodeModelSelection(e.target.value)
                     setEditing({ ...editing, provider, model })
                   }}
                   style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
@@ -386,7 +398,7 @@ export const AgentManager: React.FC = () => {
                   {availableModels.map(p => (
                     p.models.length > 0 && (
                       <optgroup key={p.provider} label={p.provider.toUpperCase()}>
-                        {p.models.map(m => <option key={m} value={`${p.provider}:${m}`}>{m}</option>)}
+                        {p.models.map(m => <option key={m} value={encodeModelSelection(p.provider, m)}>{m}</option>)}
                       </optgroup>
                     )
                   ))}

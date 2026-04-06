@@ -5,7 +5,7 @@ a compact context window prefix to prevent token limit exhaustion.
 """
 from typing import Sequence, List, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from ..core.llm import get_llm
+from ..core.llm import get_llm, get_non_agent_model_config
 
 # Keep this many recent messages verbatim; summarize everything older
 RECENT_WINDOW = 10
@@ -23,8 +23,8 @@ Summary (5 bullets max):"""
 
 async def maybe_summarize(
     messages: Sequence[BaseMessage],
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> Tuple[List[BaseMessage], bool]:
     """
     If the conversation exceeds RECENT_WINDOW messages, summarize the older
@@ -32,6 +32,9 @@ async def maybe_summarize(
     """
     if len(messages) <= RECENT_WINDOW:
         return list(messages), False
+
+    if not provider or not model:
+        provider, model = get_non_agent_model_config()
 
     old_messages = messages[:-RECENT_WINDOW]
     recent_messages = messages[-RECENT_WINDOW:]

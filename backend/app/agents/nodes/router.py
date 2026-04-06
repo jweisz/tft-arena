@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from ..state import ArenaState
-from ...core.llm import get_llm
+from ...core.llm import get_llm, get_non_agent_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +132,8 @@ Return ONLY JSON with exactly two top-level keys:
     }, ensure_ascii=True)
 
     try:
-        # Use a fast model for routing decisions
-        llm = get_llm(provider="openai", model_name="gpt-4o-mini", temperature=0)
+        provider, model_name = get_non_agent_model_config()
+        llm = get_llm(provider=provider, model_name=model_name, temperature=0)
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt),

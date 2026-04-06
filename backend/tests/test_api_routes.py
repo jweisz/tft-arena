@@ -102,6 +102,8 @@ def test_settings_partial_update_and_readback(client):
             "ollama_base_url": "http://localhost:11434",
             "default_agent_turn_budget": 7,
             "global_system_instruction": "Keep it sharp.",
+            "non_agent_provider": "ollama",
+            "non_agent_model": "llama3",
         },
     )
     assert update_response.status_code == 200
@@ -115,6 +117,8 @@ def test_settings_partial_update_and_readback(client):
     assert payload["ollama_base_url"] == "http://localhost:11434"
     assert payload["default_agent_turn_budget"] == 7
     assert payload["global_system_instruction"] == "Keep it sharp."
+    assert payload["non_agent_provider"] == "ollama"
+    assert payload["non_agent_model"] == "llama3"
 
     partial_update = client.post("/api/settings/", json={"global_system_instruction": "Updated."})
     assert partial_update.status_code == 200
@@ -123,6 +127,8 @@ def test_settings_partial_update_and_readback(client):
     assert updated_payload["openai_api_key"] is True
     assert updated_payload["global_system_instruction"] == "Updated."
     assert updated_payload["default_agent_turn_budget"] == 7
+    assert updated_payload["non_agent_provider"] == "ollama"
+    assert updated_payload["non_agent_model"] == "llama3"
 
 
 def test_agents_crud_and_duplicate_name_rejection(client):

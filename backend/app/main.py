@@ -36,6 +36,18 @@ if "sort_order" not in columns:
         conn.execute(text("UPDATE agents SET sort_order = id WHERE sort_order IS NULL"))
         conn.commit()
 
+settings_columns = [c["name"] for c in inspector.get_columns("global_settings")]
+if "non_agent_provider" not in settings_columns:
+    print("--- MIGRATION: Adding 'non_agent_provider' column to 'global_settings' table ---")
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE global_settings ADD COLUMN non_agent_provider VARCHAR"))
+        conn.commit()
+if "non_agent_model" not in settings_columns:
+    print("--- MIGRATION: Adding 'non_agent_model' column to 'global_settings' table ---")
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE global_settings ADD COLUMN non_agent_model VARCHAR"))
+        conn.commit()
+
 app = FastAPI(title="tft-arena Backend", version="1.0.0")
 
 # Configure CORS for Vite development server

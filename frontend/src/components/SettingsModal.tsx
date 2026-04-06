@@ -8,6 +8,19 @@ interface ProviderModel {
   models: string[]
 }
 
+const encodeModelSelection = (provider: string, model: string) => `${provider}::${encodeURIComponent(model)}`
+
+const decodeModelSelection = (value: string): { provider: string; model: string } => {
+  const sepIndex = value.indexOf('::')
+  if (sepIndex === -1) {
+    return { provider: 'ollama', model: value }
+  }
+  return {
+    provider: value.slice(0, sepIndex),
+    model: decodeURIComponent(value.slice(sepIndex + 2)),
+  }
+}
+
 type FontOption = { value: ThemeFont; label: string; fontFamily: string }
 const FONT_GROUPS: Array<{ group: string; options: FontOption[] }> = [
   {
@@ -63,6 +76,9 @@ export const SettingsModal: React.FC = () => {
   const [ollamaUrl, setOllamaUrl] = useState('http://host.docker.internal:11434')
   const [defaultBudget, setDefaultBudget] = useState(3)
   const [globalInstruction, setGlobalInstruction] = useState('')
+  const [availableModels, setAvailableModels] = useState<ProviderModel[]>([])
+  const [nonAgentProvider, setNonAgentProvider] = useState('')
+  const [nonAgentModel, setNonAgentModel] = useState('')
 
   // Ollama status state
   const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
@@ -86,6 +102,7 @@ export const SettingsModal: React.FC = () => {
 
     try {
       const providers = await apiJson<ProviderModel[]>('/api/providers/models')
+      setAvailableModels(providers)
       const ollama = providers.find((provider) => provider.provider === 'ollama')
       if (ollama && ollama.models.length > 0) {
         setOllamaStatus('connected')
@@ -122,6 +139,12 @@ export const SettingsModal: React.FC = () => {
           if (data.global_system_instruction !== undefined) {
             setGlobalInstruction(String(data.global_system_instruction || ''))
           }
+          if (data.non_agent_provider !== undefined) {
+            setNonAgentProvider(String(data.non_agent_provider || ''))
+          }
+          if (data.non_agent_model !== undefined) {
+            setNonAgentModel(String(data.non_agent_model || ''))
+          }
         }
       } catch (error) {
         console.error(error)
@@ -139,6 +162,27 @@ export const SettingsModal: React.FC = () => {
     }
   }, [isSettingsOpen, checkOllamaConnection])
 
+  useEffect(() => {
+    if (availableModels.length === 0) {
+      return
+    }
+
+    const hasSelection = availableModels.some((provider) =>
+      provider.provider === nonAgentProvider && provider.models.includes(nonAgentModel),
+    )
+    if (hasSelection) {
+      return
+    }
+
+    const firstAvailable = availableModels.find((provider) => provider.models.length > 0)
+    if (!firstAvailable) {
+      return
+    }
+
+    setNonAgentProvider(firstAvailable.provider)
+    setNonAgentModel(firstAvailable.models[0])
+  }, [availableModels, nonAgentProvider, nonAgentModel])
+
   const handleSave = async () => {
     const payload: Record<string, string | number> = {}
     if (openaiKey) payload.openai_api_key = openaiKey
@@ -147,6 +191,10 @@ export const SettingsModal: React.FC = () => {
     if (ollamaUrl) payload.ollama_base_url = ollamaUrl
     payload.default_agent_turn_budget = defaultBudget
     payload.global_system_instruction = globalInstruction
+    if (nonAgentProvider && nonAgentModel) {
+      payload.non_agent_provider = nonAgentProvider
+      payload.non_agent_model = nonAgentModel
+    }
 
     // Fire and forget save
     if (Object.keys(payload).length > 0) {
@@ -359,6 +407,40 @@ export const SettingsModal: React.FC = () => {
 
         {activeTab === 'arena' && (
           <div style={{ animation: 'fadeSlideIn 0.2s ease' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Non-Agent Inference Model</label>
+              {availableModels.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  No models discovered yet. Configure provider keys or connect Ollama.
+                </div>
+              ) : (
+                <select
+                  value={encodeModelSelection(nonAgentProvider, nonAgentModel)}
+                  onChange={(e) => {
+                    const decoded = decodeModelSelection(e.target.value)
+                    setNonAgentProvider(decoded.provider)
+                    setNonAgentModel(decoded.model)
+                  }}
+                  style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                >
+                  {availableModels.map((provider) => (
+                    provider.models.length > 0 && (
+                      <optgroup key={provider.provider} label={provider.provider.toUpperCase()}>
+                        {provider.models.map((model) => (
+                          <option key={`${provider.provider}-${model}`} value={encodeModelSelection(provider.provider, model)}>
+                            {model}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  ))}
+                </select>
+              )}
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.5rem', lineHeight: 1.4 }}>
+                Used by hidden arena inference: router scoring, conversation summarization, and semantic analysis.
+              </span>
+            </div>
+
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Default Speaking Budget (Turns)</label>
               <input

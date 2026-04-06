@@ -60,6 +60,8 @@ describe('SettingsModal', () => {
             ollama_base_url: 'http://ollama.local:11434',
             default_agent_turn_budget: 8,
             global_system_instruction: 'Push toward evidence.',
+            non_agent_provider: 'ollama',
+            non_agent_model: 'llama3',
           }),
         }),
       )
