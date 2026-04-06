@@ -82,6 +82,12 @@ Frontend app:
 docker compose -f docker-compose.dev.yml watch
 ```
 
+Linux Docker Engine needs an extra override so `host.docker.internal` maps to the host gateway:
+
+```bash
+docker compose -f docker-compose.dev.yml -f docker-compose.linux.yml watch
+```
+
 Ports:
 
 - frontend: `5173`

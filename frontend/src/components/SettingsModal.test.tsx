@@ -67,4 +67,5 @@ describe('SettingsModal', () => {
 
     fetchMock.mockRestore()
   })
+
 })

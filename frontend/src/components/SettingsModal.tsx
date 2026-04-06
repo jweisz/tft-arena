@@ -8,19 +8,52 @@ interface ProviderModel {
   models: string[]
 }
 
-const FONT_OPTIONS: Array<{ value: ThemeFont; label: string; fontFamily: string }> = [
-  { value: 'modern', label: 'Modern Sans (Inter / Segoe UI)', fontFamily: "'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },
-  { value: 'rounded', label: 'Rounded Sans (Avenir Rounded / ui-rounded)', fontFamily: "'Avenir Next Rounded', 'Arial Rounded MT Bold', ui-rounded, 'Nunito', 'Quicksand', 'Trebuchet MS', sans-serif" },
-  { value: 'classic', label: 'Classic UI (System)', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" },
-  { value: 'serif', label: 'Editorial Serif (Palatino / Garamond)', fontFamily: "'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Garamond, Georgia, serif" },
-  { value: 'monospace', label: 'Monospace Classic (Courier)', fontFamily: "'Courier New', Courier, 'Nimbus Mono L', 'Liberation Mono', monospace" },
-  { value: 'terminal-retro', label: 'Terminal Retro (VT-style)', fontFamily: "'VT323', 'Lucida Console', 'Courier New', Monaco, monospace" },
-  { value: 'terminal-modern', label: 'Terminal Modern (JetBrains / Cascadia)', fontFamily: "'JetBrains Mono', 'Cascadia Mono', 'Fira Code', Menlo, Consolas, monospace" },
-  { value: 'code-modern', label: 'Code Modern (IBM Plex / Source Code Pro)', fontFamily: "'IBM Plex Mono', 'Source Code Pro', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace" },
+type FontOption = { value: ThemeFont; label: string; fontFamily: string }
+const FONT_GROUPS: Array<{ group: string; options: FontOption[] }> = [
+  {
+    group: 'Sans-serif',
+    options: [
+      { value: 'modern', label: 'Inter', fontFamily: "'Inter', sans-serif" },
+      { value: 'rounded', label: 'Nunito', fontFamily: "'Nunito', sans-serif" },
+      { value: 'classic', label: 'DM Sans', fontFamily: "'DM Sans', sans-serif" },
+    ],
+  },
+  {
+    group: 'Serif',
+    options: [
+      { value: 'serif', label: 'EB Garamond', fontFamily: "'EB Garamond', serif" },
+    ],
+  },
+  {
+    group: 'Monospace',
+    options: [
+      { value: 'monospace', label: 'Space Mono', fontFamily: "'Space Mono', monospace" },
+      { value: 'terminal-retro', label: 'VT323', fontFamily: "'VT323', monospace" },
+    ],
+  },
+  {
+    group: 'Programmer Fonts',
+    options: [
+      { value: 'terminal-modern', label: 'JetBrains Mono', fontFamily: "'JetBrains Mono', monospace" },
+      { value: 'code-modern', label: 'IBM Plex Mono', fontFamily: "'IBM Plex Mono', monospace" },
+      { value: 'hack', label: 'Hack', fontFamily: "'Hack', monospace" },
+      { value: 'iosevka', label: 'Iosevka', fontFamily: "'Iosevka', monospace" },
+      { value: 'fira-mono', label: 'Fira Mono', fontFamily: "'Fira Mono', monospace" },
+      { value: 'mononoki', label: 'Mononoki', fontFamily: "'Mononoki', monospace" },
+      { value: 'victor-mono', label: 'Victor Mono', fontFamily: "'Victor Mono', monospace" },
+    ],
+  },
 ]
 
 export const SettingsModal: React.FC = () => {
-  const { isSettingsOpen, toggleSettings, palette, themeFont, setPalette, setThemeFont } = useUIStore()
+  const {
+    isSettingsOpen,
+    toggleSettings,
+    palette,
+    themeFont,
+    setPalette,
+    setThemeFont,
+  } = useUIStore()
   const [activeTab, setActiveTab] = useState<'theme' | 'models' | 'arena'>('theme')
 
   // Local state for API keys before saving
@@ -235,10 +268,14 @@ export const SettingsModal: React.FC = () => {
                 onChange={(e) => setThemeFont(e.target.value as ThemeFont)}
                 style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
               >
-                {FONT_OPTIONS.map((fontOption) => (
-                  <option key={fontOption.value} value={fontOption.value} style={{ fontFamily: fontOption.fontFamily }}>
-                    {fontOption.label}
-                  </option>
+                {FONT_GROUPS.map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.options.map((fontOption) => (
+                      <option key={fontOption.value} value={fontOption.value} style={{ fontFamily: fontOption.fontFamily }}>
+                        {fontOption.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -368,6 +405,7 @@ export const SettingsModal: React.FC = () => {
                 This prompt is prepended to the system prompt of every agent. Use it for overall style constraints (e.g. "Speak like an IRC user", "Use only 1-2 sentences", etc).
               </span>
             </div>
+
           </div>
         )}
 

@@ -12,6 +12,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/iosevka": "^5.2.5",
+    "@fontsource/mononoki": "^5.2.5",
+    "hack-font": "^3.3.0",
     "lucide-react": "^1.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { ChatArea } from './ChatArea'
 import { useUIStore } from '../store/uiStore'
@@ -15,6 +16,8 @@ const hookState: {
   send: vi.fn(),
 }
 
+const playTickMock = vi.fn()
+
 vi.mock('./MentionInput', () => ({
   MentionInput: ({ onSend }: { onSend: (text: string, mentions?: string[]) => void }) => (
     <button onClick={() => onSend('Hello arena', ['Analyst'])}>Send mock message</button>
@@ -22,7 +25,7 @@ vi.mock('./MentionInput', () => ({
 }))
 
 vi.mock('../hooks/useTypingAudio', () => ({
-  useTypingAudio: () => ({ playTick: vi.fn() }),
+  useTypingAudio: () => ({ playTick: playTickMock }),
 }))
 
 vi.mock('../hooks/useArenaSocket', async () => {
@@ -47,6 +50,7 @@ describe('ChatArea', () => {
     useUIStore.setState({
       streamingAgents: new Set(),
       generationInProgress: false,
+      agentAudioEnabled: true,
       agentStatuses: {},
       agentBudgets: {},
       agentActivity: {},
@@ -109,6 +113,7 @@ describe('ChatArea', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Streaming reply')).toBeInTheDocument()
+      expect(playTickMock).toHaveBeenCalledTimes(1)
       expect(onTelemetryUpdate).toHaveBeenCalledWith(
         [{ agent_name: 'Analyst', latency_ms: 17.2, tokens_used: 8, turn: 1 }],
         { Analyst: 2 },
@@ -119,6 +124,48 @@ describe('ChatArea', () => {
         key_ideas: ['Streaming reply'],
       })
     })
+
+    fetchMock.mockRestore()
+  })
+
+  it('does not play typing audio when audio is disabled', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response)
+
+    useUIStore.setState({ agentAudioEnabled: false })
+    render(<ChatArea roomId={3} />)
+
+    await screen.findByText(/welcome to the arena/i)
+    await act(async () => {
+      hookState.onEvent?.({ type: 'token', agent: 'Analyst', token: 'Muted stream' })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Muted stream')).toBeInTheDocument()
+      expect(playTickMock).not.toHaveBeenCalled()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it('toggles audio preference from the chat footer control', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response)
+
+    render(<ChatArea roomId={3} />)
+
+    await screen.findByText(/welcome to the arena/i)
+    const toggle = screen.getByRole('button', { name: /mute agent typing audio/i })
+    expect(toggle).toHaveTextContent('Sound: On')
+
+    await user.click(toggle)
+    expect(useUIStore.getState().agentAudioEnabled).toBe(false)
+    expect(screen.getByRole('button', { name: /unmute agent typing audio/i })).toHaveTextContent('Sound: Off')
 
     fetchMock.mockRestore()
   })

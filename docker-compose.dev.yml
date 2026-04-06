@@ -17,14 +17,11 @@ services:
       # SQLite paths — stored in Docker volumes so they persist across restarts
       DATABASE_URL: "sqlite:////data/tft_arena.db"
       LANGMEM_CHROMA_PATH: "/data/chromadb"
-      # Ollama on host machine — Docker Desktop resolves this automatically.
+      # Ollama on host machine — Docker Desktop resolves this automatically on macOS/Windows.
       # Override with OLLAMA_BASE_URL in your shell or Compose environment for remote Ollama setups.
       OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
     volumes:
       - tft_arena_data:/data
-    # Makes host.docker.internal work on Linux Docker Engine too
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     develop:
       watch:
         # Sync Python source without rebuilding the image

@@ -42,6 +42,17 @@ export const AgentManager: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [draggedAgentId, setDraggedAgentId] = useState<number | null>(null)
   const [dragOverAgentId, setDragOverAgentId] = useState<number | null>(null)
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
+
+  const buildFullPrompt = (agent: Agent, globalInstr = ''): string => {
+    const parts: string[] = []
+    if (globalInstr) parts.push(`MISSION CONSTRAINT:\n${globalInstr}`)
+    parts.push(`ROLE PROFILE:\n${agent.role_description || '(empty)'}\n\nPERSONA INSTRUCTION:\n${agent.system_prompt || '(empty)'}\n\nCORE CHAT PROTOCOL:\n- SPEAK ONLY AS YOURSELF (${agent.name || 'Agent'}).\n- DO NOT write lines, dialogue, or reactions for any other agent.\n- PROVIDE EXACTLY ONE UTTERANCE. Do not simulate a conversation.\n- STOP IMMEDIATELY after your own point is made.\n- DO NOT prefix your response with your name or any label (e.g., '${agent.name || 'Agent'}:').\n- Start your response directly with the content of your message.`)
+    if (globalInstr) parts.push(`FINAL REMINDER:\n${globalInstr}`)
+    parts.push('USER BACKGROUND:\n(injected at runtime)')
+    parts.push('PAST CONVERSATION MEMORIES:\n(injected at runtime)')
+    return parts.join('\n\n')
+  }
 
   const fetchAgents = async () => {
     try {
@@ -144,6 +155,7 @@ export const AgentManager: React.FC = () => {
       await fetchAgents()
       triggerAgentsRefresh()
       setEditing(null)
+      setPromptPreviewOpen(false)
     } catch (err) {
       console.error('Network error during save:', err)
       alert(`Failed to save agent persona: ${getErrorMessage(err, 'Internal server error')}`)
@@ -176,7 +188,7 @@ export const AgentManager: React.FC = () => {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1001, backdropFilter: 'blur(3px)' }}>
-      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: editing ? (promptPreviewOpen ? '1000px' : '700px') : '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', transition: 'width 0.2s ease' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>👤 Agent Management</h2>
           <button onClick={toggleAgentManager} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
@@ -274,8 +286,35 @@ export const AgentManager: React.FC = () => {
 
         {/* Agent Edit Form */}
         {editing && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeSlideIn 0.2s ease' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>{editing.id ? 'Edit Persona' : 'New Persona'}</h3>
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', animation: 'fadeSlideIn 0.2s ease' }}>
+            {/* Left: form fields */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>{editing.id ? 'Edit Persona' : 'New Persona'}</h3>
+              <button
+                onClick={() => setPromptPreviewOpen(o => !o)}
+                aria-label={promptPreviewOpen ? 'Hide full prompt preview' : 'Show full prompt preview'}
+                title={promptPreviewOpen ? 'Hide full prompt preview' : 'Show full prompt preview'}
+                style={{
+                  height: '2rem',
+                  padding: '0 0.65rem',
+                  cursor: 'pointer',
+                  backgroundColor: promptPreviewOpen ? 'var(--bg-tertiary)' : 'transparent',
+                  border: '1px solid var(--border-color)',
+                  color: promptPreviewOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {promptPreviewOpen ? 'Hide Preview' : 'Show Preview'}
+              </button>
+            </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.6rem', fontWeight: 'bold' }}>Presets</label>
@@ -315,7 +354,17 @@ export const AgentManager: React.FC = () => {
                 value={editing.relevance_instructions}
                 onChange={e => setEditing({ ...editing, relevance_instructions: e.target.value })}
                 placeholder="Describe the kinds of messages this agent should respond to..."
-                style={{ width: '100%', minHeight: '100px', padding: '0.6rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
+                style={{ width: '100%', minHeight: '80px', padding: '0.6rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.3rem', fontWeight: 'bold' }}>Persona Instructions</label>
+              <textarea
+                value={editing.system_prompt}
+                onChange={e => setEditing({ ...editing, system_prompt: e.target.value })}
+                placeholder="Full behavioral instructions for this agent. If left empty, a basic prompt is auto-generated from the role description."
+                style={{ width: '100%', minHeight: '160px', padding: '0.6rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
               />
             </div>
 
@@ -346,7 +395,7 @@ export const AgentManager: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button onClick={() => setEditing(null)} style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px' }}>Cancel</button>
+              <button onClick={() => { setEditing(null); setPromptPreviewOpen(false) }} style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px' }}>Cancel</button>
               <button
                 onClick={save}
                 disabled={loading || !editing.name || !editing.role_description}
@@ -355,6 +404,16 @@ export const AgentManager: React.FC = () => {
                 {loading ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
+            </div>{/* end left column */}
+
+            {/* Right: full prompt preview */}
+            {promptPreviewOpen && (
+              <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-secondary)', paddingBottom: '0.4rem', borderBottom: '1px solid var(--border-color)' }}>Full Prompt Preview</div>
+                <pre style={{ margin: 0, padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowY: 'auto', maxHeight: 'calc(90vh - 180px)', lineHeight: 1.5, fontFamily: 'monospace' }}>{buildFullPrompt(editing)}</pre>
+                <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Runtime fields (memory, user profile, global instruction) shown as placeholders.</p>
+              </div>
+            )}
           </div>
         )}
       </div>

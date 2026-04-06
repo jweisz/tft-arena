@@ -79,6 +79,8 @@ export const ChatArea: React.FC<{
   const [tooltip, setTooltip] = useState<{ visible: boolean; text: string; x: number; y: number }>({ visible: false, text: '', x: 0, y: 0 })
   const {
     streamingAgents,
+    agentAudioEnabled,
+    setAgentAudioEnabled,
     updateStreamingAgents,
     updateAgentStatus,
     updateAgentBudget,
@@ -179,7 +181,9 @@ export const ChatArea: React.FC<{
         }
         const tokenKey = streamingIdsRef.current[event.agent]
 
-        playTick()
+        if (agentAudioEnabled) {
+          playTick()
+        }
         setMessages(prev => {
           for (let i = prev.length - 1; i >= 0; i--) {
             if (prev[i].id === tokenKey) {
@@ -238,7 +242,7 @@ export const ChatArea: React.FC<{
         break
       }
     }
-  }, [finalizeStreamingMessage, nextMessageId, onScratchpadUpdate, onTelemetryUpdate, playTick, setGenerationInProgress, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
+  }, [agentAudioEnabled, finalizeStreamingMessage, nextMessageId, onScratchpadUpdate, onTelemetryUpdate, playTick, setGenerationInProgress, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
 
   const { connect, send, disconnect } = useArenaSocket({ roomId, onEvent: handleEvent })
 
@@ -455,6 +459,23 @@ export const ChatArea: React.FC<{
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>@ to mention an agent. Enter to send.</span>
+          <button
+            type="button"
+            onClick={() => setAgentAudioEnabled(!agentAudioEnabled)}
+            aria-label={agentAudioEnabled ? 'Mute agent typing audio' : 'Unmute agent typing audio'}
+            title={agentAudioEnabled ? 'Mute agent typing audio' : 'Unmute agent typing audio'}
+            style={{
+              border: '1px solid var(--border-color)',
+              backgroundColor: agentAudioEnabled ? 'var(--bg-tertiary)' : 'transparent',
+              color: 'var(--text-secondary)',
+              borderRadius: '999px',
+              padding: '0.2rem 0.55rem',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+            }}
+          >
+            {agentAudioEnabled ? 'Sound: On' : 'Sound: Off'}
+          </button>
         </div>
       </div>
     </main>

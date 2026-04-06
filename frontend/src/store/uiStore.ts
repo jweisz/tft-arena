@@ -9,11 +9,17 @@ export type ThemeFont =
   | 'monospace'
   | 'terminal-retro'
   | 'terminal-modern'
-  | 'code-modern';
+  | 'code-modern'
+  | 'hack'
+  | 'iosevka'
+  | 'fira-mono'
+  | 'mononoki'
+  | 'victor-mono';
 export type AgentStatus = 'Idle' | 'Thinking' | 'Speaking' | 'Queued';
 
 const THEME_STORAGE_KEY = 'tft-arena.theme.palette'
 const FONT_STORAGE_KEY = 'tft-arena.theme.font'
+const AGENT_AUDIO_STORAGE_KEY = 'tft-arena.audio.agent-enabled'
 
 const VALID_PALETTES: ColorPalette[] = [
   'premium-dark',
@@ -33,6 +39,11 @@ const VALID_FONTS: ThemeFont[] = [
   'terminal-retro',
   'terminal-modern',
   'code-modern',
+  'hack',
+  'iosevka',
+  'fira-mono',
+  'mononoki',
+  'victor-mono',
 ]
 
 const getStoredPalette = (): ColorPalette => {
@@ -51,9 +62,21 @@ const getStoredFont = (): ThemeFont => {
   return VALID_FONTS.includes(stored as ThemeFont) ? (stored as ThemeFont) : 'modern'
 }
 
+const getStoredAgentAudioEnabled = (): boolean => {
+  if (typeof window === 'undefined') {
+    return true
+  }
+  const stored = window.localStorage.getItem(AGENT_AUDIO_STORAGE_KEY)
+  if (stored === null) {
+    return true
+  }
+  return stored === 'true'
+}
+
 interface UIState {
   palette: ColorPalette;
   themeFont: ThemeFont;
+  agentAudioEnabled: boolean;
   isSettingsOpen: boolean;
   isProfileOpen: boolean;
   isAgentManagerOpen: boolean;
@@ -61,6 +84,7 @@ interface UIState {
   agentsRefreshKey: number;
   setPalette: (palette: ColorPalette) => void;
   setThemeFont: (font: ThemeFont) => void;
+  setAgentAudioEnabled: (enabled: boolean) => void;
   toggleSettings: () => void;
   toggleProfile: () => void;
   toggleAgentManager: () => void;
@@ -87,6 +111,7 @@ interface UIState {
 export const useUIStore = create<UIState>()((set) => ({
   palette: getStoredPalette(),
   themeFont: getStoredFont(),
+  agentAudioEnabled: getStoredAgentAudioEnabled(),
   isSettingsOpen: false,
   isProfileOpen: false,
   isAgentManagerOpen: false,
@@ -105,6 +130,12 @@ export const useUIStore = create<UIState>()((set) => ({
       window.localStorage.setItem(FONT_STORAGE_KEY, themeFont)
     }
     set({ themeFont });
+  },
+  setAgentAudioEnabled: (agentAudioEnabled: boolean) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AGENT_AUDIO_STORAGE_KEY, String(agentAudioEnabled))
+    }
+    set({ agentAudioEnabled });
   },
   toggleSettings: () => set((state: UIState) => ({ isSettingsOpen: !state.isSettingsOpen })),
   toggleProfile: () => set((state: UIState) => ({ isProfileOpen: !state.isProfileOpen })),
