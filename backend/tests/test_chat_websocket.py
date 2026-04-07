@@ -203,3 +203,58 @@ def test_chat_websocket_ignores_blank_messages(client, db_session, monkeypatch):
         websocket.send_text('{"text":"   ","mentions":[]}')
 
     assert db_session.query(schema.Message).filter(schema.Message.room_id == room.id).count() == 0
+
+
+def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session, monkeypatch):
+    room, agent = _seed_room_with_agent(db_session)
+
+    class StubGraph:
+        async def astream_events(self, initial_state, version: str) -> AsyncIterator[dict]:
+            assert version == "v2"
+
+            # Internal model stream with no agent_name metadata should be hidden.
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "router",
+                "metadata": {"langgraph_node": "router"},
+                "data": {"chunk": type("Chunk", (), {"content": "{\"scores\": {\"Analyst\": 9}}"})()},
+            }
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "agent_node",
+                "metadata": {"agent_name": agent.name},
+                "data": {"chunk": type("Chunk", (), {"content": "Visible output"})()},
+            }
+            yield {
+                "event": "on_node_end",
+                "name": f"agent_node_{agent.name}",
+                "data": {
+                    "output": {
+                        "agent_budgets": {agent.name: 2},
+                        "telemetry": [
+                            {
+                                "agent_name": agent.name,
+                                "tokens_used": 3,
+                                "latency_ms": 10.0,
+                                "turn": 1,
+                            }
+                        ],
+                    }
+                },
+            }
+
+    async def fake_semantic(_messages):
+        return {"annotations": [], "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []}}
+
+    monkeypatch.setattr("app.api.chat.graph", StubGraph())
+    monkeypatch.setattr("app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic)
+
+    with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
+        assert websocket.receive_json() == {"type": "activity_stats", "stats": {}}
+        websocket.send_text('{"text":"hello arena","mentions":[]}')
+        received = [websocket.receive_json() for _ in range(5)]
+
+    token_events = [event for event in received if event["type"] == "token"]
+    assert len(token_events) == 1
+    assert token_events[0]["agent"] == agent.name
+    assert token_events[0]["token"] == "Visible output"

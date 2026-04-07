@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import { apiFetch, apiJson, apiUrl, getErrorMessage } from '../lib/api'
 import { useUIStore } from '../store/uiStore'
@@ -48,8 +48,11 @@ export const AgentManager: React.FC = () => {
   const { isAgentManagerOpen, toggleAgentManager, triggerAgentsRefresh } = useUIStore()
   const [agents, setAgents] = useState<Agent[]>([])
   const [editing, setEditing] = useState<Agent | null>(null)
+  const [activeTab, setActiveTab] = useState<'agents' | 'advanced'>('agents')
   const [loading, setLoading] = useState(false)
+  const [bulkUpdatingModels, setBulkUpdatingModels] = useState(false)
   const [availableModels, setAvailableModels] = useState<ProviderModel[]>([])
+  const [bulkModelSelection, setBulkModelSelection] = useState('')
   const [presets, setPresets] = useState<Array<Pick<Agent, 'name' | 'emoji' | 'role_description' | 'relevance_instructions' | 'system_prompt'>>>([])
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [draggedAgentId, setDraggedAgentId] = useState<number | null>(null)
@@ -133,13 +136,83 @@ export const AgentManager: React.FC = () => {
       fetchPresets()
     } else {
       setConfirmDeleteId(null)
+      setActiveTab('agents')
     }
   }, [isAgentManagerOpen])
 
   // Get a flat list of all models for the unified dropdown
-  const allModels = availableModels.flatMap(p =>
-    p.models.map(m => ({ provider: p.provider, model: m }))
+  const allModels = useMemo(
+    () => availableModels.flatMap(p => p.models.map(m => ({ provider: p.provider, model: m }))),
+    [availableModels],
   )
+
+  useEffect(() => {
+    if (allModels.length === 0) {
+      if (bulkModelSelection !== '') {
+        setBulkModelSelection('')
+      }
+      return
+    }
+
+    const currentSelectionIsValid = allModels.some(({ provider, model }) =>
+      encodeModelSelection(provider, model) === bulkModelSelection,
+    )
+
+    if (currentSelectionIsValid) {
+      return
+    }
+
+    const allAgentsShareModel = agents.length > 0 && agents.every(agent =>
+      agent.provider === agents[0].provider && agent.model === agents[0].model,
+    )
+
+    const preferred = allAgentsShareModel
+      ? encodeModelSelection(agents[0].provider, agents[0].model)
+      : encodeModelSelection(allModels[0].provider, allModels[0].model)
+
+    const preferredIsValid = allModels.some(({ provider, model }) =>
+      encodeModelSelection(provider, model) === preferred,
+    )
+
+    setBulkModelSelection(preferredIsValid
+      ? preferred
+      : encodeModelSelection(allModels[0].provider, allModels[0].model))
+  }, [agents, allModels, bulkModelSelection])
+
+  const applyModelToAllAgents = async () => {
+    if (!bulkModelSelection || agents.length === 0) {
+      return
+    }
+
+    const { provider, model } = decodeModelSelection(bulkModelSelection)
+    setBulkUpdatingModels(true)
+
+    try {
+      const updateResults = await Promise.allSettled(
+        agents
+          .filter((agent): agent is Agent & { id: number } => agent.id !== undefined)
+          .map((agent) =>
+            apiJson<Agent>(`/api/agents/${agent.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...agent, provider, model }),
+            }),
+          ),
+      )
+
+      const failureCount = updateResults.filter((result) => result.status === 'rejected').length
+      await fetchAgents()
+      triggerAgentsRefresh()
+
+      if (failureCount > 0) {
+        alert(`Updated models for ${updateResults.length - failureCount} of ${updateResults.length} agents.`)
+      }
+    } catch (error) {
+      alert(`Failed to apply model to all agents: ${getErrorMessage(error, 'Internal server error')}`)
+    } finally {
+      setBulkUpdatingModels(false)
+    }
+  }
 
   const save = async () => {
     if (!editing) return
@@ -212,87 +285,165 @@ export const AgentManager: React.FC = () => {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
               Define global agent personas here. You can activate or deactivate these in individual rooms via the sidebar.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              {agents.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No agents yet. Create your first persona!</p>}
-              {agents.map(agent => (
-                <div
-                  key={agent.id}
-                  draggable={confirmDeleteId !== agent.id}
-                  onDragStart={() => setDraggedAgentId(agent.id ?? null)}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    setDragOverAgentId(agent.id ?? null)
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverAgentId === agent.id) {
-                      setDragOverAgentId(null)
-                    }
-                  }}
-                  onDrop={async (event) => {
-                    event.preventDefault()
-                    const targetId = agent.id ?? null
-                    const sourceId = draggedAgentId
-                    setDraggedAgentId(null)
-                    setDragOverAgentId(null)
-                    if (sourceId !== null && targetId !== null) {
-                      await moveAgent(sourceId, targetId)
-                    }
-                  }}
-                  onDragEnd={() => {
-                    setDraggedAgentId(null)
-                    setDragOverAgentId(null)
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1rem',
-                    padding: '0.75rem',
-                    backgroundColor: draggedAgentId === agent.id ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
-                    borderRadius: '6px',
-                    border: dragOverAgentId === agent.id ? '1px solid var(--accent-color)' : '1px solid transparent',
-                  }}
-                >
-                  <div
-                    aria-label={`Drag ${agent.name}`}
-                    title="Drag to reorder"
-                    style={{
-                      cursor: 'grab',
-                      color: 'var(--text-secondary)',
-                      fontSize: '1rem',
-                      userSelect: 'none',
-                      lineHeight: 1,
-                    }}
-                  >
-                    ⋮⋮
-                  </div>
-                  <img src={getAvatarUrl(agent)} alt={agent.name} width={40} height={40} style={{ borderRadius: '50%', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{ fontSize: '1.2rem' }}>{agent.emoji || '🤖'}</span>
-                      {agent.name}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{agent.provider} / {agent.model}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                    {!editing && confirmDeleteId === agent.id ? (
-                      <button onClick={(e) => agent.id && remove(agent.id, e)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#fff', backgroundColor: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Confirm Delete?</button>
-                    ) : (
-                      <>
-                        <button onClick={() => setEditing(agent)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}>Edit</button>
-                        <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(agent.id || null); }} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#ef4444', backgroundColor: 'transparent', border: '1px solid #ef4444', cursor: 'pointer' }}>Delete</button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+              <button
+                onClick={() => setActiveTab('agents')}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: 'transparent',
+                  padding: '0.75rem',
+                  cursor: 'pointer',
+                  borderBottom: activeTab === 'agents' ? '2px solid var(--accent-color)' : '2px solid transparent',
+                  color: activeTab === 'agents' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: activeTab === 'agents' ? 'bold' : 'normal',
+                }}
+              >
+                Agents
+              </button>
+              <button
+                onClick={() => setActiveTab('advanced')}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: 'transparent',
+                  padding: '0.75rem',
+                  cursor: 'pointer',
+                  borderBottom: activeTab === 'advanced' ? '2px solid var(--accent-color)' : '2px solid transparent',
+                  color: activeTab === 'advanced' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: activeTab === 'advanced' ? 'bold' : 'normal',
+                }}
+              >
+                Advanced
+              </button>
             </div>
+            {activeTab === 'agents' && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  {agents.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No agents yet. Create your first persona!</p>}
+                  {agents.map(agent => (
+                    <div
+                      key={agent.id}
+                      draggable={confirmDeleteId !== agent.id}
+                      onDragStart={() => setDraggedAgentId(agent.id ?? null)}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        setDragOverAgentId(agent.id ?? null)
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverAgentId === agent.id) {
+                          setDragOverAgentId(null)
+                        }
+                      }}
+                      onDrop={async (event) => {
+                        event.preventDefault()
+                        const targetId = agent.id ?? null
+                        const sourceId = draggedAgentId
+                        setDraggedAgentId(null)
+                        setDragOverAgentId(null)
+                        if (sourceId !== null && targetId !== null) {
+                          await moveAgent(sourceId, targetId)
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setDraggedAgentId(null)
+                        setDragOverAgentId(null)
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        padding: '0.75rem',
+                        backgroundColor: draggedAgentId === agent.id ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                        borderRadius: '6px',
+                        border: dragOverAgentId === agent.id ? '1px solid var(--accent-color)' : '1px solid transparent',
+                      }}
+                    >
+                      <div
+                        aria-label={`Drag ${agent.name}`}
+                        title="Drag to reorder"
+                        style={{
+                          cursor: 'grab',
+                          color: 'var(--text-secondary)',
+                          fontSize: '1rem',
+                          userSelect: 'none',
+                          lineHeight: 1,
+                        }}
+                      >
+                        ⋮⋮
+                      </div>
+                      <img src={getAvatarUrl(agent)} alt={agent.name} width={40} height={40} style={{ borderRadius: '50%', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '1.2rem' }}>{agent.emoji || '🤖'}</span>
+                          {agent.name}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{agent.provider} / {agent.model}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                        {!editing && confirmDeleteId === agent.id ? (
+                          <button onClick={(e) => agent.id && remove(agent.id, e)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#fff', backgroundColor: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Confirm Delete?</button>
+                        ) : (
+                          <>
+                            <button onClick={() => setEditing(agent)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}>Edit</button>
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(agent.id || null); }} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#ef4444', backgroundColor: 'transparent', border: '1px solid #ef4444', cursor: 'pointer' }}>Delete</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-            <button onClick={() => {
-              const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
-              setEditing({ ...DEFAULT_AGENT, provider: firstModel.provider, model: firstModel.model })
-            }} style={{ width: '100%', padding: '0.75rem', border: '2px dashed var(--border-color)', backgroundColor: 'transparent', cursor: 'pointer', color: 'var(--text-primary)', borderRadius: '6px' }}>
-              + Create New Agent Persona
-            </button>
+                <button onClick={() => {
+                  const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
+                  setEditing({ ...DEFAULT_AGENT, provider: firstModel.provider, model: firstModel.model })
+                }} style={{ width: '100%', padding: '0.75rem', border: '2px dashed var(--border-color)', backgroundColor: 'transparent', cursor: 'pointer', color: 'var(--text-primary)', borderRadius: '6px' }}>
+                  + Create New Agent Persona
+                </button>
+              </>
+            )}
+
+            {activeTab === 'advanced' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                  Bulk operations apply across all agent personas.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label htmlFor="bulk-model-selector" style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                      Apply model to all agents
+                    </label>
+                    <select
+                      id="bulk-model-selector"
+                      aria-label="Bulk model selector"
+                      value={bulkModelSelection}
+                      onChange={(event) => setBulkModelSelection(event.target.value)}
+                      disabled={allModels.length === 0 || agents.length === 0 || bulkUpdatingModels}
+                      style={{ width: '100%', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                    >
+                      {availableModels.map((providerModel) => (
+                        providerModel.models.length > 0 && (
+                          <optgroup key={providerModel.provider} label={providerModel.provider.toUpperCase()}>
+                            {providerModel.models.map((modelName) => (
+                              <option key={modelName} value={encodeModelSelection(providerModel.provider, modelName)}>
+                                {modelName}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={applyModelToAllAgents}
+                    disabled={!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels}
+                    style={{ padding: '0.55rem 0.9rem', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px', opacity: (!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels) ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                  >
+                    {bulkUpdatingModels ? 'Applying…' : 'Apply to All'}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 

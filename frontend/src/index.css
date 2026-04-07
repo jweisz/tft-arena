@@ -54,6 +54,14 @@ input:focus, textarea:focus {
   animation: fadeSlideIn 0.2s ease;
 }
 
+.chat-messages pre,
+.chat-messages code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
 /* Button micro-interaction */
 button:active {
   transform: scale(0.96);

@@ -65,6 +65,12 @@ interface HistoryMessage {
 
 const WELCOME = (roomName?: string) => `Welcome to ${roomName ?? 'the Arena'}. The agents are ready.`
 
+const isInternalAgentName = (name?: string | null) => {
+  if (!name) return false
+  const normalized = name.trim().toLowerCase()
+  return normalized === 'router' || normalized === 'semantic'
+}
+
 export const ChatArea: React.FC<{
   roomId: number
   onScratchpadUpdate?: (s: ScratchpadState) => void
@@ -155,6 +161,9 @@ export const ChatArea: React.FC<{
         break
       }
       case 'agent_message_done': {
+        if (isInternalAgentName(event.agent)) {
+          break
+        }
         finalizeStreamingMessage(event.agent, false, event.content)
         break
       }
@@ -168,6 +177,9 @@ export const ChatArea: React.FC<{
         break
       }
       case 'token': {
+        if (isInternalAgentName(event.agent)) {
+          break
+        }
         setGenerationInProgress(true)
         if (!currentStreaming.has(event.agent)) {
           const nextSet = new Set(currentStreaming)
@@ -275,7 +287,9 @@ export const ChatArea: React.FC<{
           return
         }
 
-        setMessages(history.map((m) => ({
+        const filteredHistory = history.filter((m) => !isInternalAgentName(m.agent?.name))
+
+        setMessages(filteredHistory.map((m) => ({
           id: `db-${m.id}`,
           role: m.role,
           agentName: m.agent?.name || (m.role === 'agent' ? 'System' : ''),

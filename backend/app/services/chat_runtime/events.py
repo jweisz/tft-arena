@@ -79,10 +79,16 @@ async def handle_graph_event(
     if kind == "on_chat_model_stream":
         chunk = event["data"]["chunk"]
         token = chunk.content if hasattr(chunk, "content") else str(chunk)
-        agent_name = (
-            event.get("metadata", {}).get("agent_name")
-            or event.get("metadata", {}).get("langgraph_node", "agent")
-        )
+        agent_name = event.get("metadata", {}).get("agent_name")
+        if not agent_name:
+            # Ignore internal node streams (for example router scoring traces)
+            # unless they are explicitly tagged with a real agent name.
+            return []
+
+        active_agent_names = {agent["name"] for agent in active_agents}
+        if agent_name not in active_agent_names:
+            return []
+
         agent_outputs[agent_name] = agent_outputs.get(agent_name, "") + token
         await manager.send_json_to_room({
             "type": "token",

@@ -11,6 +11,7 @@
 
 .app-container > * {
   min-height: 0;
+  min-width: 0;
 }
 
 .nav-sidebar {

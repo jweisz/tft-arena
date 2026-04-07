@@ -83,4 +83,52 @@ describe('AgentManager', () => {
     fetchMock.mockRestore()
     triggerAgentsRefresh.mockRestore()
   })
+
+  it('applies a selected model to all agents', async () => {
+    const user = userEvent.setup()
+    const triggerAgentsRefresh = vi.spyOn(useUIStore.getState(), 'triggerAgentsRefresh')
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    const initialAgents = [
+      { id: 1, name: 'Analyst', sort_order: 1, role_description: 'Analyzes.', relevance_instructions: '', system_prompt: 'stub', emoji: '🧠', provider: 'ollama', model: 'llama3', token_budget: 3 },
+      { id: 2, name: 'Muse', sort_order: 2, role_description: 'Imagines.', relevance_instructions: '', system_prompt: 'stub', emoji: '💡', provider: 'ollama', model: 'llama3', token_budget: 3 },
+    ]
+
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => initialAgents } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ provider: 'ollama', models: ['llama3', 'llama3.1'] }] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...initialAgents[0], model: 'llama3.1' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...initialAgents[1], model: 'llama3.1' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [
+        { ...initialAgents[0], model: 'llama3.1' },
+        { ...initialAgents[1], model: 'llama3.1' },
+      ] } as Response)
+
+    render(<AgentManager />)
+
+    await screen.findByText('Analyst')
+    await user.click(screen.getByRole('button', { name: /advanced/i }))
+
+    const selector = screen.getByLabelText(/bulk model selector/i) as HTMLSelectElement
+    await user.selectOptions(selector, 'ollama::llama3.1')
+    expect(selector.value).toBe('ollama::llama3.1')
+
+    await user.click(screen.getByRole('button', { name: /apply to all/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/agents/1'),
+        expect.objectContaining({ method: 'PUT' }),
+      )
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/agents/2'),
+        expect.objectContaining({ method: 'PUT' }),
+      )
+      expect(triggerAgentsRefresh).toHaveBeenCalled()
+    })
+
+    fetchMock.mockRestore()
+    triggerAgentsRefresh.mockRestore()
+  })
 })

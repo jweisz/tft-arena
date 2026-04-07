@@ -228,4 +228,33 @@ describe('ChatArea', () => {
 
     fetchMock.mockRestore()
   })
+
+  it('hides internal router traces from history and live stream', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 1, role: 'human', content: 'Question' },
+        { id: 2, role: 'agent', content: '{"scores": {"Analyst": 9}}', agent: { name: 'Router' } },
+        { id: 3, role: 'agent', content: 'Visible answer', agent: { name: 'Analyst' } },
+      ],
+    } as Response)
+
+    render(<ChatArea roomId={7} />)
+
+    expect(await screen.findByText('Question')).toBeInTheDocument()
+    expect(screen.getByText('Visible answer')).toBeInTheDocument()
+    expect(screen.queryByText(/"scores"/i)).not.toBeInTheDocument()
+
+    await act(async () => {
+      hookState.onEvent?.({ type: 'token', agent: 'Router', token: 'internal-debug' })
+      hookState.onEvent?.({ type: 'agent_message_done', agent: 'Router', content: 'internal-debug' })
+      hookState.onEvent?.({ type: 'done' })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('internal-debug')).not.toBeInTheDocument()
+    })
+
+    fetchMock.mockRestore()
+  })
 })
