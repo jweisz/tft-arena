@@ -275,20 +275,13 @@ describe('AgentManager', () => {
 
     await screen.findByText(/create your first persona/i)
 
-    const markdown = `# Agent Persona: Systems Thinker
-
-- Emoji: 🧩
-- Provider: ollama
-- Model: llama3.1
-- Token Budget: 5
-
-## Role Description
-Maps interdependencies and second-order effects.
-
-## Relevance Instructions
-Respond when the user asks about interacting systems.
-
-## Persona Instructions
+    const markdown = `---
+name: "Systems Thinker"
+emoji: "🧩"
+role_description: "Maps interdependencies and second-order effects."
+relevance_instructions: |
+  Respond when the user asks about interacting systems.
+---
 Surface trade-offs and feedback loops.`
 
     const file = new File([markdown], 'systems-thinker.md', { type: 'text/markdown' })

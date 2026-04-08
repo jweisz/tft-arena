@@ -362,21 +362,21 @@ export const AgentManager: React.FC = () => {
     apiUrl(`/api/avatars/generate-default?role_description=${encodeURIComponent(agent.role_description)}&agent_name=${encodeURIComponent(agent.name)}`)
 
   const buildAgentSpecMarkdown = (agent: Agent): string => {
+    const yamlQuote = (s: string): string =>
+      `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+
+    const yamlBlock = (s: string): string => {
+      const indented = s.trim().split('\n').map(l => `  ${l}`).join('\n')
+      return `|\n${indented}`
+    }
+
     return [
-      `# Agent Persona: ${agent.name}`,
-      '',
-      `- Emoji: ${agent.emoji || '🤖'}`,
-      `- Provider: ${agent.provider || 'ollama'}`,
-      `- Model: ${agent.model || 'llama3'}`,
-      `- Token Budget: ${agent.token_budget ?? 3}`,
-      '',
-      '## Role Description',
-      agent.role_description || '',
-      '',
-      '## Relevance Instructions',
-      agent.relevance_instructions || '',
-      '',
-      '## Persona Instructions',
+      '---',
+      `name: ${yamlQuote(agent.name)}`,
+      `emoji: ${yamlQuote(agent.emoji || '🤖')}`,
+      `role_description: ${yamlQuote(agent.role_description || '')}`,
+      `relevance_instructions: ${yamlBlock(agent.relevance_instructions || '')}`,
+      '---',
       agent.system_prompt || '',
       '',
     ].join('\n')
@@ -397,6 +397,48 @@ export const AgentManager: React.FC = () => {
   }
 
   const parseImportedAgentSpec = (content: string): Partial<Agent> => {
+    // Try YAML frontmatter format first (---\n<fields>\n---\n<body>)
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
+    if (fmMatch) {
+      const frontmatter = fmMatch[1]
+      const body = fmMatch[2].trim()
+
+      const readQuoted = (key: string): string => {
+        const quoted = frontmatter.match(new RegExp(`(?:^|\\n)${key}:\\s*"((?:[^"\\\\]|\\\\.)*)"`)  )
+        if (quoted) return quoted[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+        const unquoted = frontmatter.match(new RegExp(`(?:^|\\n)${key}:\\s*([^\\n|>][^\\n]*)`))
+        return unquoted?.[1]?.trim() || ''
+      }
+
+      const readBlock = (key: string): string => {
+        const startMatch = frontmatter.match(new RegExp(`(?:^|\\n)${key}:\\s*[|>][^\\n]*\\n`))
+        if (!startMatch) return readQuoted(key)
+        const startIdx = frontmatter.indexOf(startMatch[0]) + startMatch[0].length
+        const rest = frontmatter.slice(startIdx)
+        const lines: string[] = []
+        for (const line of rest.split('\n')) {
+          if (line === '' || line.startsWith('  ')) {
+            lines.push(line.startsWith('  ') ? line.slice(2) : '')
+          } else {
+            break
+          }
+        }
+        return lines.join('\n').trim()
+      }
+
+      const name = readQuoted('name')
+      if (!name) throw new Error('Could not find an agent name in the markdown file.')
+
+      return {
+        name,
+        emoji: readQuoted('emoji') || '🤖',
+        role_description: readBlock('role_description'),
+        relevance_instructions: readBlock('relevance_instructions'),
+        system_prompt: body,
+      }
+    }
+
+    // Fallback: legacy # Agent Persona: format
     const nameMatch = content.match(/^#\s*Agent Persona:\s*(.+)$/im) || content.match(/^#\s*(.+)$/im)
     const name = nameMatch?.[1]?.trim() || ''
     if (!name) {
@@ -404,16 +446,10 @@ export const AgentManager: React.FC = () => {
     }
 
     const emojiMatch = content.match(/^[-*]\s*Emoji:\s*(.+)$/im)
-    const providerMatch = content.match(/^[-*]\s*Provider:\s*(.+)$/im)
-    const modelMatch = content.match(/^[-*]\s*Model:\s*(.+)$/im)
-    const tokenBudgetMatch = content.match(/^[-*]\s*Token Budget:\s*(\d+)$/im)
 
     return {
       name,
       emoji: emojiMatch?.[1]?.trim() || '🤖',
-      provider: providerMatch?.[1]?.trim(),
-      model: modelMatch?.[1]?.trim(),
-      token_budget: tokenBudgetMatch ? Number.parseInt(tokenBudgetMatch[1], 10) : undefined,
       role_description: extractMarkdownSection(content, 'Role Description'),
       relevance_instructions: extractMarkdownSection(content, 'Relevance Instructions'),
       system_prompt: extractMarkdownSection(content, 'Persona Instructions'),
@@ -458,9 +494,8 @@ export const AgentManager: React.FC = () => {
       setEditing({
         ...DEFAULT_AGENT,
         ...parsed,
-        provider: parsed.provider || firstModel.provider,
-        model: parsed.model || firstModel.model,
-        token_budget: parsed.token_budget ?? DEFAULT_AGENT.token_budget,
+        provider: firstModel.provider,
+        model: firstModel.model,
       })
     } catch (error) {
       alert(`Failed to import agent persona: ${getErrorMessage(error, 'Invalid markdown file')}`)
