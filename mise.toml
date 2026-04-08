@@ -27,17 +27,13 @@ run = "echo 'Both servers started.'"
 
 # ── Docker ────────────────────────────────────
 
-[tasks.docker-dev]
+[tasks.docker-up]
 description = "Start all services in Docker with hot-reload (compose watch)"
-run = "docker compose -f docker-compose.dev.yml watch"
-
-[tasks.docker-prod]
-description = "Start all services in Docker (production build)"
-run = "docker compose -f docker-compose.yml up --build"
+run = "docker compose watch"
 
 [tasks.docker-down]
 description = "Stop and remove all Docker containers"
-run = "docker compose -f docker-compose.dev.yml down"
+run = "docker compose down"
 
 # ── Tests ─────────────────────────────────────
 

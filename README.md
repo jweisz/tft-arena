@@ -17,8 +17,7 @@ Key capabilities:
 
 - `backend/`: FastAPI app, LangGraph orchestration, SQLAlchemy models, pytest suite.
 - `frontend/`: React app, Vite build, Zustand state, Vitest suite.
-- `docker-compose.dev.yml`: Docker dev workflow with file sync/watch.
-- `docker-compose.yml`: Docker production-style build/runtime.
+- `docker-compose.yml`: Single Docker workflow with file sync/watch and standard `up --build`.
 
 ## Prerequisites
 
@@ -79,13 +78,13 @@ Frontend app:
 ### Dev watch mode (hot reload)
 
 ```bash
-docker compose -f docker-compose.dev.yml watch
+docker compose watch
 ```
 
 Linux Docker Engine needs an extra override so `host.docker.internal` maps to the host gateway:
 
 ```bash
-docker compose -f docker-compose.dev.yml -f docker-compose.linux.yml watch
+docker compose -f docker-compose.yml -f docker-compose.linux.yml watch
 ```
 
 Ports:
@@ -93,15 +92,15 @@ Ports:
 - frontend: `5173`
 - backend: `8000`
 
-### Production-style compose
+### Build and run
 
 ```bash
-docker compose -f docker-compose.yml up --build
+docker compose up --build
 ```
 
 Ports:
 
-- frontend: `3000`
+- frontend: `5173`
 - backend: `8000`
 
 ## Auth Mode (Current Behavior)
