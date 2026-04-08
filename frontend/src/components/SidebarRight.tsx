@@ -200,6 +200,7 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, semanticLast
             return (
               <div
                 key={agent.id}
+                title={agent.role_description}
                 onClick={() => {
                   if (!hasActiveRoom) return
                   toggleAgent(agent.id)

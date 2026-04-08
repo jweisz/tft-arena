@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Pencil, Trash2, Upload } from 'lucide-react'
 
 import { apiFetch, apiJson, apiUrl, getErrorMessage } from '../lib/api'
 import { useUIStore } from '../store/uiStore'
@@ -51,6 +52,8 @@ export const AgentManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'agents' | 'advanced'>('agents')
   const [loading, setLoading] = useState(false)
   const [bulkUpdatingModels, setBulkUpdatingModels] = useState(false)
+  const [bulkCreatingDefaults, setBulkCreatingDefaults] = useState(false)
+  const [bulkRemovingAgents, setBulkRemovingAgents] = useState(false)
   const [availableModels, setAvailableModels] = useState<ProviderModel[]>([])
   const [bulkModelSelection, setBulkModelSelection] = useState('')
   const [presets, setPresets] = useState<Array<Pick<Agent, 'name' | 'emoji' | 'role_description' | 'relevance_instructions' | 'system_prompt'>>>([])
@@ -58,6 +61,7 @@ export const AgentManager: React.FC = () => {
   const [draggedAgentId, setDraggedAgentId] = useState<number | null>(null)
   const [dragOverAgentId, setDragOverAgentId] = useState<number | null>(null)
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
+  const importFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const buildFullPrompt = (agent: Agent, globalInstr = ''): string => {
     const parts: string[] = []
@@ -214,6 +218,94 @@ export const AgentManager: React.FC = () => {
     }
   }
 
+  const createAllDefaultAgents = async () => {
+    if (bulkCreatingDefaults || presets.length === 0) {
+      return
+    }
+
+    setBulkCreatingDefaults(true)
+    try {
+      const existingNames = new Set(agents.map((agent) => agent.name.toLowerCase()))
+      const presetsToCreate = presets.filter((preset) => !existingNames.has(preset.name.toLowerCase()))
+
+      if (presetsToCreate.length === 0) {
+        alert('All default agents already exist.')
+        return
+      }
+
+      const fallbackModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
+      const createResults = await Promise.allSettled(
+        presetsToCreate.map((preset) =>
+          apiJson<Agent>('/api/agents/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...DEFAULT_AGENT,
+              name: preset.name,
+              emoji: preset.emoji,
+              role_description: preset.role_description,
+              relevance_instructions: preset.relevance_instructions,
+              system_prompt: preset.system_prompt,
+              provider: fallbackModel.provider,
+              model: fallbackModel.model,
+            }),
+          }),
+        ),
+      )
+
+      const failureCount = createResults.filter((result) => result.status === 'rejected').length
+      await fetchAgents()
+      triggerAgentsRefresh()
+
+      if (failureCount > 0) {
+        alert(`Created ${createResults.length - failureCount} of ${createResults.length} default agents.`)
+      }
+    } catch (error) {
+      alert(`Failed to create default agents: ${getErrorMessage(error, 'Internal server error')}`)
+    } finally {
+      setBulkCreatingDefaults(false)
+    }
+  }
+
+  const removeAllAgents = async () => {
+    if (bulkRemovingAgents || agents.length === 0) {
+      return
+    }
+
+    const confirmed = window.confirm('Remove all agents? This action cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    setBulkRemovingAgents(true)
+    try {
+      const deleteResults = await Promise.allSettled(
+        agents
+          .filter((agent): agent is Agent & { id: number } => agent.id !== undefined)
+          .map((agent) =>
+            apiFetch(`/api/agents/${agent.id}`, { method: 'DELETE' }).then(async (res) => {
+              if (!res.ok) {
+                throw new Error(getErrorMessage(await res.json().catch(() => undefined), 'Unknown error'))
+              }
+              return res
+            }),
+          ),
+      )
+
+      const failureCount = deleteResults.filter((result) => result.status === 'rejected').length
+      await fetchAgents()
+      triggerAgentsRefresh()
+
+      if (failureCount > 0) {
+        alert(`Removed ${deleteResults.length - failureCount} of ${deleteResults.length} agents.`)
+      }
+    } catch (error) {
+      alert(`Failed to remove all agents: ${getErrorMessage(error, 'Internal server error')}`)
+    } finally {
+      setBulkRemovingAgents(false)
+    }
+  }
+
   const save = async () => {
     if (!editing) return
     setLoading(true)
@@ -269,15 +361,131 @@ export const AgentManager: React.FC = () => {
   const getAvatarUrl = (agent: Agent) =>
     apiUrl(`/api/avatars/generate-default?role_description=${encodeURIComponent(agent.role_description)}&agent_name=${encodeURIComponent(agent.name)}`)
 
+  const buildAgentSpecMarkdown = (agent: Agent): string => {
+    return [
+      `# Agent Persona: ${agent.name}`,
+      '',
+      `- Emoji: ${agent.emoji || '🤖'}`,
+      `- Provider: ${agent.provider || 'ollama'}`,
+      `- Model: ${agent.model || 'llama3'}`,
+      `- Token Budget: ${agent.token_budget ?? 3}`,
+      '',
+      '## Role Description',
+      agent.role_description || '',
+      '',
+      '## Relevance Instructions',
+      agent.relevance_instructions || '',
+      '',
+      '## Persona Instructions',
+      agent.system_prompt || '',
+      '',
+    ].join('\n')
+  }
+
+  const slugify = (value: string): string => {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  const extractMarkdownSection = (content: string, sectionTitle: string): string => {
+    const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`##\\s+${escapedTitle}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, 'i')
+    const match = content.match(regex)
+    return match?.[1]?.trim() || ''
+  }
+
+  const parseImportedAgentSpec = (content: string): Partial<Agent> => {
+    const nameMatch = content.match(/^#\s*Agent Persona:\s*(.+)$/im) || content.match(/^#\s*(.+)$/im)
+    const name = nameMatch?.[1]?.trim() || ''
+    if (!name) {
+      throw new Error('Could not find an agent name in the markdown file.')
+    }
+
+    const emojiMatch = content.match(/^[-*]\s*Emoji:\s*(.+)$/im)
+    const providerMatch = content.match(/^[-*]\s*Provider:\s*(.+)$/im)
+    const modelMatch = content.match(/^[-*]\s*Model:\s*(.+)$/im)
+    const tokenBudgetMatch = content.match(/^[-*]\s*Token Budget:\s*(\d+)$/im)
+
+    return {
+      name,
+      emoji: emojiMatch?.[1]?.trim() || '🤖',
+      provider: providerMatch?.[1]?.trim(),
+      model: modelMatch?.[1]?.trim(),
+      token_budget: tokenBudgetMatch ? Number.parseInt(tokenBudgetMatch[1], 10) : undefined,
+      role_description: extractMarkdownSection(content, 'Role Description'),
+      relevance_instructions: extractMarkdownSection(content, 'Relevance Instructions'),
+      system_prompt: extractMarkdownSection(content, 'Persona Instructions'),
+    }
+  }
+
+  const downloadAgentSpec = (agent: Agent, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    const markdown = buildAgentSpecMarkdown(agent)
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = `${slugify(agent.name) || 'agent-persona'}.md`
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
+  }
+
+  const openImportDialog = () => {
+    importFileInputRef.current?.click()
+  }
+
+  const importAgentSpec = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    try {
+      const text = typeof file.text === 'function'
+        ? await file.text()
+        : await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+          reader.onerror = () => reject(new Error('Failed to read markdown file.'))
+          reader.readAsText(file)
+        })
+      const parsed = parseImportedAgentSpec(text)
+      const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
+      setEditing({
+        ...DEFAULT_AGENT,
+        ...parsed,
+        provider: parsed.provider || firstModel.provider,
+        model: parsed.model || firstModel.model,
+        token_budget: parsed.token_budget ?? DEFAULT_AGENT.token_budget,
+      })
+    } catch (error) {
+      alert(`Failed to import agent persona: ${getErrorMessage(error, 'Invalid markdown file')}`)
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   if (!isAgentManagerOpen) return null
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1001, backdropFilter: 'blur(3px)' }}>
-      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: editing ? (promptPreviewOpen ? '1000px' : '700px') : '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', transition: 'width 0.2s ease' }}>
+      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: editing ? (promptPreviewOpen ? '1000px' : '700px') : '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: editing ? 'hidden' : 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', transition: 'width 0.2s ease' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>👤 Agent Management</h2>
           <button onClick={toggleAgentManager} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
         </div>
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept=".md,.markdown,text/markdown"
+          onChange={importAgentSpec}
+          style={{ display: 'none' }}
+          aria-label="Import agent persona markdown"
+        />
 
         {/* Agent List */}
         {!editing && (
@@ -318,8 +526,8 @@ export const AgentManager: React.FC = () => {
               </button>
             </div>
             {activeTab === 'agents' && (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 'calc(90vh - 260px)', maxHeight: 'calc(90vh - 260px)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem', overflowY: 'auto', paddingRight: '0.25rem', flex: 1, minHeight: 0 }}>
                   {agents.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No agents yet. Create your first persona!</p>}
                   {agents.map(agent => (
                     <div
@@ -385,8 +593,30 @@ export const AgentManager: React.FC = () => {
                           <button onClick={(e) => agent.id && remove(agent.id, e)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#fff', backgroundColor: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Confirm Delete?</button>
                         ) : (
                           <>
-                            <button onClick={() => setEditing(agent)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}>Edit</button>
-                            <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(agent.id || null); }} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#ef4444', backgroundColor: 'transparent', border: '1px solid #ef4444', cursor: 'pointer' }}>Delete</button>
+                            <button
+                              onClick={(e) => downloadAgentSpec(agent, e)}
+                              aria-label={`Download ${agent.name} markdown`}
+                              title="Download markdown"
+                              style={{ width: '2.2rem', height: '2.2rem', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-primary)' }}
+                            >
+                              <Download size={15} />
+                            </button>
+                            <button
+                              onClick={() => setEditing(agent)}
+                              aria-label={`Edit ${agent.name}`}
+                              title="Edit"
+                              style={{ width: '2.2rem', height: '2.2rem', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-primary)' }}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(agent.id || null); }}
+                              aria-label={`Delete ${agent.name}`}
+                              title="Delete"
+                              style={{ width: '2.2rem', height: '2.2rem', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: '1px solid #ef4444', borderRadius: '6px', cursor: 'pointer', color: '#ef4444' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </>
                         )}
                       </div>
@@ -394,13 +624,24 @@ export const AgentManager: React.FC = () => {
                   ))}
                 </div>
 
-                <button onClick={() => {
-                  const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
-                  setEditing({ ...DEFAULT_AGENT, provider: firstModel.provider, model: firstModel.model })
-                }} style={{ width: '100%', padding: '0.75rem', border: '2px dashed var(--border-color)', backgroundColor: 'transparent', cursor: 'pointer', color: 'var(--text-primary)', borderRadius: '6px' }}>
-                  + Create New Agent Persona
-                </button>
-              </>
+                <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'var(--bg-primary)', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
+                  <button
+                    onClick={openImportDialog}
+                    style={{ flex: 1, padding: '0.75rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-primary)', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Upload size={15} /> Import
+                  </button>
+                  <button
+                    onClick={() => {
+                      const firstModel = allModels[0] || { provider: 'ollama', model: 'llama3' }
+                      setEditing({ ...DEFAULT_AGENT, provider: firstModel.provider, model: firstModel.model })
+                    }}
+                    style={{ flex: 1, padding: '0.75rem', border: '1px solid var(--accent-color)', backgroundColor: 'var(--accent-color)', cursor: 'pointer', color: '#fff', borderRadius: '6px', fontWeight: 'bold' }}
+                  >
+                    + Create
+                  </button>
+                </div>
+              </div>
             )}
 
             {activeTab === 'advanced' && (
@@ -408,6 +649,22 @@ export const AgentManager: React.FC = () => {
                 <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                   Bulk operations apply across all agent personas.
                 </p>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={createAllDefaultAgents}
+                    disabled={presets.length === 0 || bulkCreatingDefaults || bulkRemovingAgents}
+                    style={{ padding: '0.55rem 0.9rem', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px', opacity: (presets.length === 0 || bulkCreatingDefaults || bulkRemovingAgents) ? 0.5 : 1 }}
+                  >
+                    {bulkCreatingDefaults ? 'Creating…' : 'Create All Default Agents'}
+                  </button>
+                  <button
+                    onClick={removeAllAgents}
+                    disabled={agents.length === 0 || bulkRemovingAgents || bulkCreatingDefaults || bulkUpdatingModels}
+                    style={{ padding: '0.55rem 0.9rem', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '4px', opacity: (agents.length === 0 || bulkRemovingAgents || bulkCreatingDefaults || bulkUpdatingModels) ? 0.5 : 1 }}
+                  >
+                    {bulkRemovingAgents ? 'Removing…' : 'Remove All Agents'}
+                  </button>
+                </div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
                   <div style={{ flex: 1 }}>
                     <label htmlFor="bulk-model-selector" style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
@@ -436,8 +693,8 @@ export const AgentManager: React.FC = () => {
                   </div>
                   <button
                     onClick={applyModelToAllAgents}
-                    disabled={!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels}
-                    style={{ padding: '0.55rem 0.9rem', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px', opacity: (!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels) ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                    disabled={!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels || bulkCreatingDefaults || bulkRemovingAgents}
+                    style={{ padding: '0.55rem 0.9rem', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px', opacity: (!bulkModelSelection || allModels.length === 0 || agents.length === 0 || bulkUpdatingModels || bulkCreatingDefaults || bulkRemovingAgents) ? 0.5 : 1, whiteSpace: 'nowrap' }}
                   >
                     {bulkUpdatingModels ? 'Applying…' : 'Apply to All'}
                   </button>
@@ -449,9 +706,9 @@ export const AgentManager: React.FC = () => {
 
         {/* Agent Edit Form */}
         {editing && (
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', animation: 'fadeSlideIn 0.2s ease' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'stretch', animation: 'fadeSlideIn 0.2s ease', minHeight: 0, maxHeight: 'calc(90vh - 170px)' }}>
             {/* Left: form fields */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
               <h3 style={{ margin: 0, fontSize: '1rem' }}>{editing.id ? 'Edit Persona' : 'New Persona'}</h3>
               <button
@@ -478,6 +735,8 @@ export const AgentManager: React.FC = () => {
                 {promptPreviewOpen ? 'Hide Preview' : 'Show Preview'}
               </button>
             </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '0.25rem', marginTop: '1rem' }}>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.6rem', fontWeight: 'bold' }}>Presets</label>
@@ -556,8 +815,9 @@ export const AgentManager: React.FC = () => {
                 </select>
               )}
             </div>
+            </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
               <button onClick={() => { setEditing(null); setPromptPreviewOpen(false) }} style={{ padding: '0.5rem 1rem', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '4px' }}>Cancel</button>
               <button
                 onClick={save}
@@ -571,9 +831,9 @@ export const AgentManager: React.FC = () => {
 
             {/* Right: full prompt preview */}
             {promptPreviewOpen && (
-              <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0 }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-secondary)', paddingBottom: '0.4rem', borderBottom: '1px solid var(--border-color)' }}>Full Prompt Preview</div>
-                <pre style={{ margin: 0, padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowY: 'auto', maxHeight: 'calc(90vh - 180px)', lineHeight: 1.5, fontFamily: 'monospace' }}>{buildFullPrompt(editing)}</pre>
+                <pre style={{ margin: 0, padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowY: 'auto', flex: 1, minHeight: 0, lineHeight: 1.5, fontFamily: 'monospace' }}>{buildFullPrompt(editing)}</pre>
                 <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Runtime fields (memory, user profile, global instruction) shown as placeholders.</p>
               </div>
             )}
