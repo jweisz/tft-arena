@@ -135,6 +135,23 @@ npm test
 npm run build
 ```
 
+## DB Inspection
+
+To check which tables exist and how many rows each contains, run this one-liner from the `backend/` directory with the venv active:
+
+```bash
+python - <<'EOF'
+from app.models.db import DATABASE_URL, engine
+from sqlalchemy import inspect, text
+print(f"DATABASE_URL: {DATABASE_URL}")
+inspector = inspect(engine)
+for table in inspector.get_table_names():
+    with engine.connect() as conn:
+        count = conn.execute(text(f"SELECT count(*) FROM {table}")).scalar()
+    print(f"  {table}: {count} rows")
+EOF
+```
+
 ## License
 
 Apache 2.0. See `LICENSE`.
