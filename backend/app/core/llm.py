@@ -1,6 +1,6 @@
 import os
 import time
-from langchain_community.chat_models import ChatLiteLLM
+from langchain_litellm import ChatLiteLLM
 from sqlalchemy.orm import Session
 from ..models.db import SessionLocal
 from ..models.schema import Agent, GlobalSettings
