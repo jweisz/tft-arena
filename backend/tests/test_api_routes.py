@@ -1,13 +1,10 @@
 from app.models import schema
 
 
-def test_health_endpoints_match_payload(client):
+def test_health_endpoint(client):
     api_response = client.get("/api/health")
-    legacy_response = client.get("/health")
 
     assert api_response.status_code == 200
-    assert legacy_response.status_code == 200
-    assert api_response.json() == legacy_response.json()
     assert api_response.json()["status"] == "ok"
 
 

@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import time
 import logging
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -78,13 +79,23 @@ def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any
 
     return scores, reasons
 
-async def eval_speaker_importance(messages: List[Any], agents: List[Dict[str, Any]]) -> tuple[Dict[str, float], Dict[str, str]]:
+async def eval_speaker_importance(
+    messages: List[Any],
+    agents: List[Dict[str, Any]],
+) -> tuple[Dict[str, float], Dict[str, str], Dict[str, Any]]:
     """
     Uses a fast LLM to rank the relevance of each agent to the current conversation.
     Returns (scores, reasons): both keyed by agent_name.
     scores: 0-10 float, reasons: one-sentence explanation.
     """
-    if not agents: return {}, {}
+    if not agents:
+        provider, model_name = get_non_agent_model_config()
+        return {}, {}, {
+            "provider": provider,
+            "model": model_name,
+            "tokens_used": 0,
+            "latency_ms": 0.0,
+        }
 
     # Context window: Use the last 5 messages to provide thematic flow.
     recent_msgs = messages[-5:]
@@ -131,20 +142,31 @@ Return ONLY JSON with exactly two top-level keys:
         },
     }, ensure_ascii=True)
 
+    provider, model_name = get_non_agent_model_config()
+
     try:
-        provider, model_name = get_non_agent_model_config()
         llm = get_llm(provider=provider, model_name=model_name, temperature=0)
+        started = time.perf_counter()
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt),
         ])
+        elapsed_ms = (time.perf_counter() - started) * 1000
 
         # Clean response text in case of markdown formatting or filler
         raw_content = response.content.strip()
+        usage = getattr(response, "usage_metadata", {}) or {}
+        tokens_used = usage.get("output_tokens", len(raw_content.split()))
         parsed = _extract_json_object(raw_content)
         if parsed is None:
             logger.warning("router scoring returned non-json payload preview=%s", raw_content[:200])
-            return _heuristic_importance_scores(messages, agents)
+            heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
+            return heuristic_scores, heuristic_reasons, {
+                "provider": provider,
+                "model": model_name,
+                "tokens_used": tokens_used,
+                "latency_ms": round(elapsed_ms, 1),
+            }
 
         heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
         scores = {}
@@ -160,11 +182,22 @@ Return ONLY JSON with exactly two top-level keys:
             scores[agent_name] = score
             reasons[agent_name] = str(parsed.get("reasons", {}).get(agent_name, heuristic_reasons.get(agent_name, "No reason provided.")))
 
-        return scores, reasons
+        return scores, reasons, {
+            "provider": provider,
+            "model": model_name,
+            "tokens_used": tokens_used,
+            "latency_ms": round(elapsed_ms, 1),
+        }
     except Exception:
         logger.exception("router speaker-importance evaluation failed")
 
-    return _heuristic_importance_scores(messages, agents)
+    heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
+    return heuristic_scores, heuristic_reasons, {
+        "provider": provider,
+        "model": model_name,
+        "tokens_used": 0,
+        "latency_ms": 0.0,
+    }
 
 
 async def router_node(state: ArenaState) -> Dict[str, Any]:
@@ -275,7 +308,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         }
 
     # Evaluate Importance and Sort
-    scores, reasons = await eval_speaker_importance(messages, candidates)
+    scores, reasons, router_runtime = await eval_speaker_importance(messages, candidates)
     agent_scores = scores
     agent_reasons = reasons
 
@@ -291,7 +324,10 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     # Fallback: 'Winner Takes All' (ensure at least 1 speaker if generic prompt)
     if not next_speakers and sorted_candidates:
         top_agent = sorted_candidates[0]
-        if scores.get(top_agent["name"], 0) >= 1.0:
+        top_score = scores.get(top_agent["name"], 0)
+        # Always respond to a human message — never leave the user without a reply.
+        # For AI-to-AI chaining, still require a minimum signal to allow chain termination.
+        if last_msg.type == "human" or top_score >= 1.0:
             next_speakers = [top_agent["name"]]
             agent_reasons[top_agent["name"]] = f"{agent_reasons.get(top_agent['name'], 'Best available match.')} Selected as the best available fallback."
 
@@ -308,5 +344,6 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         "agent_statuses": agent_statuses,
         "agent_scores": agent_scores,
         "agent_reasons": agent_reasons,
+        "router_runtime": router_runtime,
         "turn_number": turn + 1 if last_msg.type == "human" else turn,
     }

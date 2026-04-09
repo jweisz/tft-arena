@@ -3,6 +3,16 @@ from collections.abc import AsyncIterator
 from app.models import schema
 
 
+def _collect_events_until(websocket, stop_type: str, max_events: int = 24) -> list[dict]:
+    events: list[dict] = []
+    for _ in range(max_events):
+        event = websocket.receive_json()
+        events.append(event)
+        if event.get("type") == stop_type:
+            break
+    return events
+
+
 def _seed_room_with_agent(db_session):
     settings = schema.GlobalSettings(default_agent_turn_budget=3, global_system_instruction="Be precise.")
     agent = schema.Agent(
@@ -85,21 +95,23 @@ def test_chat_websocket_streams_token_telemetry_and_semantic_events(client, db_s
         first_event = websocket.receive_json()
         assert first_event == {"type": "activity_stats", "stats": {}}
 
+        second_event = websocket.receive_json()
+        assert second_event["type"] == "inference_status"
+        assert any(process["process_id"] == "router" for process in second_event["processes"])
+
         websocket.send_text('{"text":"hello arena","mentions":[]}')
 
-        received = [websocket.receive_json() for _ in range(8)]
+        received = _collect_events_until(websocket, "semantic")
 
     event_types = [event["type"] for event in received]
-    assert event_types == [
-        "status_update",
-        "status_update",
-        "token",
-        "agent_message_done",
-        "telemetry",
-        "activity_stats",
-        "done",
-        "semantic",
-    ]
+    assert "status_update" in event_types
+    assert "token" in event_types
+    assert "agent_message_done" in event_types
+    assert "telemetry" in event_types
+    assert "activity_stats" in event_types
+    assert "done" in event_types
+    assert "semantic" in event_types
+    assert "inference_status" in event_types
 
     telemetry_event = next(event for event in received if event["type"] == "telemetry")
     assert telemetry_event["budgets"] == {agent.name: 2}
@@ -176,8 +188,9 @@ def test_chat_websocket_emits_agent_message_done_for_repeated_agent_turns(client
 
     with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
         assert websocket.receive_json() == {"type": "activity_stats", "stats": {}}
+        assert websocket.receive_json()["type"] == "inference_status"
         websocket.send_text('{"text":"hello arena","mentions":[]}')
-        received = [websocket.receive_json() for _ in range(8)]
+        received = _collect_events_until(websocket, "done")
 
     done_events = [event for event in received if event["type"] == "agent_message_done"]
     assert [event["agent"] for event in done_events] == [agent.name, agent.name]
@@ -251,8 +264,9 @@ def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session
 
     with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
         assert websocket.receive_json() == {"type": "activity_stats", "stats": {}}
+        assert websocket.receive_json()["type"] == "inference_status"
         websocket.send_text('{"text":"hello arena","mentions":[]}')
-        received = [websocket.receive_json() for _ in range(5)]
+        received = _collect_events_until(websocket, "done")
 
     token_events = [event for event in received if event["type"] == "token"]
     assert len(token_events) == 1

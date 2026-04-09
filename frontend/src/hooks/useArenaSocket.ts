@@ -9,6 +9,17 @@ export interface TelemetryEntry {
   turn: number
 }
 
+export interface InferenceProcessStatus {
+  process_id: string
+  process_kind: 'agent' | 'router' | 'semantic'
+  process_label: string
+  provider: string
+  model: string
+  loaded: boolean
+  active: boolean
+  tokens_per_sec: number | null
+}
+
 export interface ScratchpadState {
   consensus: string
   open_questions: string[]
@@ -23,6 +34,7 @@ export type WSEvent =
   | { type: 'interrupted' }
   | { type: 'error'; error: string }
   | { type: 'telemetry'; data: TelemetryEntry[]; budgets: Record<string, number> }
+  | { type: 'inference_status'; processes: InferenceProcessStatus[] }
   | { type: 'budget_update'; budgets: Record<string, number> }
   | { type: 'activity_stats'; stats: Record<string, number> }
   | { type: 'semantic'; annotations: Array<Record<string, unknown>>; scratchpad: ScratchpadState }

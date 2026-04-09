@@ -7,13 +7,17 @@
 
 # ── Local dev (no Docker) ─────────────────────
 
+[tasks.install]
+description = "Install all backend and frontend dependencies"
+run = """
+uv sync --extra dev --project backend
+npm install --prefix frontend
+"""
+
 [tasks.app-backend]
 description = "Start the FastAPI backend locally (hot-reload)"
 dir = "backend"
-run = """
-source .venv/bin/activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-"""
+run = "uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
 [tasks.app-frontend]
 description = "Start the Vite dev server locally"
@@ -21,8 +25,8 @@ dir = "frontend"
 run = "npm run dev"
 
 [tasks.app]
-description = "Start backend + frontend locally (runs both in parallel)"
-depends = ["app-backend", "app-frontend"]
+description = "Install deps then start backend + frontend locally (runs both in parallel)"
+depends = ["install", "app-backend", "app-frontend"]
 run = "echo 'Both servers started.'"
 
 # ── Docker ────────────────────────────────────
@@ -40,7 +44,4 @@ run = "docker compose down"
 [tasks.test]
 description = "Run the backend Python test suite"
 dir = "backend"
-run = """
-source .venv/bin/activate
-python -m pytest tests/ -v
-"""
+run = "uv run python -m pytest tests/ -v"

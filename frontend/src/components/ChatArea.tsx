@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { Volume2, VolumeX } from 'lucide-react'
 import { MentionInput } from './MentionInput'
 import ReactMarkdown from 'react-markdown'
 import { useArenaSocket } from '../hooks/useArenaSocket'
-import type { ScratchpadState, TelemetryEntry, WSEvent } from '../hooks/useArenaSocket'
+import type { InferenceProcessStatus, ScratchpadState, TelemetryEntry, WSEvent } from '../hooks/useArenaSocket'
 import { useTypingAudio } from '../hooks/useTypingAudio'
 import { apiJson } from '../lib/api'
 import { useUIStore } from '../store/uiStore'
@@ -75,7 +76,8 @@ export const ChatArea: React.FC<{
   roomId: number
   onScratchpadUpdate?: (s: ScratchpadState) => void
   onTelemetryUpdate?: (data: TelemetryEntry[], budgets: Record<string, number>) => void
-}> = ({ roomId, onScratchpadUpdate, onTelemetryUpdate }) => {
+  onInferenceStatusUpdate?: (processes: InferenceProcessStatus[]) => void
+}> = ({ roomId, onScratchpadUpdate, onTelemetryUpdate, onInferenceStatusUpdate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // Per human-message relevance snapshot: msgId -> { scores, reasons }
   const [relevanceMap, setRelevanceMap] = useState<Record<string, RelevanceSnapshot>>({})
@@ -237,6 +239,10 @@ export const ChatArea: React.FC<{
         setAllBudgets(event.budgets)
         break
       }
+      case 'inference_status': {
+        onInferenceStatusUpdate?.(event.processes)
+        break
+      }
       case 'activity_stats': {
         useUIStore.getState().setAgentActivity(event.stats)
         break
@@ -254,7 +260,7 @@ export const ChatArea: React.FC<{
         break
       }
     }
-  }, [agentAudioEnabled, finalizeStreamingMessage, nextMessageId, onScratchpadUpdate, onTelemetryUpdate, playTick, setGenerationInProgress, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
+  }, [agentAudioEnabled, finalizeStreamingMessage, nextMessageId, onScratchpadUpdate, onTelemetryUpdate, onInferenceStatusUpdate, playTick, setGenerationInProgress, updateStreamingAgents, updateAgentStatus, updateAgentBudget, setAllBudgets])
 
   const { connect, send, disconnect } = useArenaSocket({ roomId, onEvent: handleEvent })
 
@@ -483,12 +489,16 @@ export const ChatArea: React.FC<{
               backgroundColor: agentAudioEnabled ? 'var(--bg-tertiary)' : 'transparent',
               color: 'var(--text-secondary)',
               borderRadius: '999px',
-              padding: '0.2rem 0.55rem',
-              fontSize: '0.75rem',
+              padding: '0.25rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '2rem',
+              height: '2rem',
               cursor: 'pointer',
             }}
           >
-            {agentAudioEnabled ? 'Sound: On' : 'Sound: Off'}
+            {agentAudioEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
         </div>
       </div>

@@ -31,6 +31,12 @@ def stub_router_scoring(monkeypatch):
         return (
             {agent["name"]: 10.0 for agent in agents},
             {agent["name"]: "Selected for test." for agent in agents},
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tokens_used": 10,
+                "latency_ms": 25.0,
+            },
         )
 
     monkeypatch.setattr(

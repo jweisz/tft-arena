@@ -161,11 +161,12 @@ describe('ChatArea', () => {
 
     await screen.findByText(/welcome to the arena/i)
     const toggle = screen.getByRole('button', { name: /mute agent typing audio/i })
-    expect(toggle).toHaveTextContent('Sound: On')
+    expect(toggle).toHaveAttribute('title', 'Mute agent typing audio')
+    expect(toggle).not.toHaveTextContent(/sound:/i)
 
     await user.click(toggle)
     expect(useUIStore.getState().agentAudioEnabled).toBe(false)
-    expect(screen.getByRole('button', { name: /unmute agent typing audio/i })).toHaveTextContent('Sound: Off')
+    expect(screen.getByRole('button', { name: /unmute agent typing audio/i })).toHaveAttribute('title', 'Unmute agent typing audio')
 
     fetchMock.mockRestore()
   })

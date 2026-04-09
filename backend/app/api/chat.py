@@ -12,9 +12,11 @@ from ..agents.graph import build_graph
 from ..core.route_policy import AccessPolicy, get_ws_policy
 from ..core.security import resolve_websocket_auth_context
 from ..core.websockets import manager
+from ..core.llm import get_non_agent_model_config
 from ..models import schema
 from ..models.db import get_db
 from ..services.chat_runtime import (
+    broadcast_inference_status,
     broadcast_turn_completion,
     build_initial_state,
     get_activity_stats,
@@ -22,6 +24,7 @@ from ..services.chat_runtime import (
     load_agents,
     load_settings,
     persist_human_message,
+    sync_loaded_processes,
     schedule_semantic_update,
 )
 
@@ -36,10 +39,12 @@ async def _run_turn(
     initial_state: dict[str, Any],
     active_agents: list[dict[str, Any]],
     agent_budgets: dict[str, int],
+    inference_processes: dict[str, dict[str, Any]],
 ) -> None:
     # Accumulate streamed content per agent for persistence
     agent_outputs: dict[str, str] = {}
     latest_telemetry: list[dict[str, Any]] = []
+    stream_runtime: dict[str, dict[str, float]] = {}
 
     async for event in graph.astream_events(initial_state, version="v2"):
         telemetry = await handle_graph_event(
@@ -50,12 +55,14 @@ async def _run_turn(
             initial_state=initial_state,
             agent_budgets=agent_budgets,
             agent_outputs=agent_outputs,
+            inference_processes=inference_processes,
+            stream_runtime=stream_runtime,
         )
         if telemetry:
             latest_telemetry = telemetry
 
     await broadcast_turn_completion(room_id, db, latest_telemetry, agent_budgets)
-    await schedule_semantic_update(room_id, db)
+    await schedule_semantic_update(room_id, db, inference_processes=inference_processes)
 
 
 @router.websocket("/{room_id}/stream")
@@ -70,12 +77,25 @@ async def websocket_endpoint(
 
     await manager.connect(websocket, room_id)
     agent_budgets: dict = {}  # persists across turns in this connection
+    inference_processes: dict[str, dict[str, Any]] = {}
 
     # Initial activity stats
     await manager.send_json_to_room({
         "type": "activity_stats",
         "stats": get_activity_stats(room_id, db)
     }, room_id)
+
+    room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
+    initial_default_budget, _ = load_settings(db)
+    initial_agents = load_agents(room, db, default_budget=initial_default_budget)
+    non_agent_provider, non_agent_model = get_non_agent_model_config()
+    inference_processes = sync_loaded_processes(
+        active_agents=initial_agents,
+        non_agent_provider=non_agent_provider,
+        non_agent_model=non_agent_model,
+        existing=inference_processes,
+    )
+    await broadcast_inference_status(room_id, inference_processes)
 
     try:
         while True:
@@ -95,6 +115,14 @@ async def websocket_endpoint(
 
             room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
             active_agents = load_agents(room, db, default_budget=current_default_budget)
+            non_agent_provider, non_agent_model = get_non_agent_model_config()
+            inference_processes = sync_loaded_processes(
+                active_agents=active_agents,
+                non_agent_provider=non_agent_provider,
+                non_agent_model=non_agent_model,
+                existing=inference_processes,
+            )
+            await broadcast_inference_status(room_id, inference_processes)
 
             persist_human_message(db, room_id, user_text)
 
@@ -116,6 +144,7 @@ async def websocket_endpoint(
                         initial_state=initial_state,
                         active_agents=active_agents,
                         agent_budgets=agent_budgets,
+                        inference_processes=inference_processes,
                     )
                 )
                 register_turn_task(room_id, turn_task)

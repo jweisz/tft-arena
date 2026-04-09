@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { TelemetryPanel } from './TelemetryPanel'
 import { apiFetch, apiJson, apiUrl } from '../lib/api'
-import type { ScratchpadState, TelemetryEntry } from '../hooks/useArenaSocket'
+import type { InferenceProcessStatus, ScratchpadState, TelemetryEntry } from '../hooks/useArenaSocket'
 import { useUIStore } from '../store/uiStore'
 
 interface Agent {
@@ -19,7 +19,11 @@ interface Props {
   roomId: number
   scratchpad?: ScratchpadState
   semanticLastUpdatedAt?: number | null
-  telemetry?: { data: TelemetryEntry[]; budgets: Record<string, number> }
+  telemetry?: {
+    data: TelemetryEntry[]
+    budgets: Record<string, number>
+    inferenceProcesses: InferenceProcessStatus[]
+  }
 }
 
 // Removed hardcoded ROOM_ID = 1
@@ -328,7 +332,9 @@ export const SidebarRight: React.FC<Props> = ({ roomId, scratchpad, semanticLast
         </div>
       </div>
 
-      <TelemetryPanel latestData={telemetry?.data ?? []} />
+      <TelemetryPanel
+        inferenceProcesses={telemetry?.inferenceProcesses ?? []}
+      />
     </aside>
   )
 }

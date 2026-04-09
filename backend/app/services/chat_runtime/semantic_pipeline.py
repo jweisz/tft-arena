@@ -1,6 +1,9 @@
 """Semantic agent pipeline utilities for websocket chat."""
 
 import asyncio
+import json
+import time
+from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy.orm import Session
@@ -8,6 +11,7 @@ from sqlalchemy.orm import Session
 from ...agents.nodes.semantic import run_semantic_agent
 from ...core.websockets import manager
 from ...models import schema
+from .inference import compute_tokens_per_second, ordered_processes, set_process_runtime
 
 
 def load_semantic_messages(db: Session, room_id: int, limit: int = 12):
@@ -35,19 +39,55 @@ def load_semantic_messages(db: Session, room_id: int, limit: int = 12):
 
     return semantic_messages
 
+async def send_semantic_update(
+    room_id: int,
+    semantic_messages,
+    inference_processes: dict[str, dict[str, Any]] | None = None,
+) -> None:
+    if inference_processes is not None:
+        set_process_runtime(inference_processes, "semantic", active=True, tokens_per_sec=None)
+        await manager.send_json_to_room({
+            "type": "inference_status",
+            "processes": ordered_processes(inference_processes),
+        }, room_id)
 
-async def send_semantic_update(room_id: int, semantic_messages) -> None:
     try:
+        started = time.perf_counter()
         sem_result = await run_semantic_agent(semantic_messages)
+        latency_ms = (time.perf_counter() - started) * 1000
+        estimated_tokens = len(json.dumps(sem_result).split())
+
+        if inference_processes is not None:
+            set_process_runtime(
+                inference_processes,
+                "semantic",
+                active=False,
+                tokens_per_sec=compute_tokens_per_second(estimated_tokens, latency_ms),
+            )
+            await manager.send_json_to_room({
+                "type": "inference_status",
+                "processes": ordered_processes(inference_processes),
+            }, room_id)
+
         await manager.send_json_to_room({
             "type": "semantic",
             "annotations": sem_result.get("annotations", []),
             "scratchpad": sem_result.get("scratchpad", {}),
         }, room_id)
     except Exception as exc:  # pragma: no cover - defensive transport guard
+        if inference_processes is not None:
+            set_process_runtime(inference_processes, "semantic", active=False, tokens_per_sec=None)
+            await manager.send_json_to_room({
+                "type": "inference_status",
+                "processes": ordered_processes(inference_processes),
+            }, room_id)
         print(f"Semantic agent failed: {exc}")
 
 
-async def schedule_semantic_update(room_id: int, db: Session) -> None:
+async def schedule_semantic_update(
+    room_id: int,
+    db: Session,
+    inference_processes: dict[str, dict[str, Any]] | None = None,
+) -> None:
     semantic_messages = load_semantic_messages(db, room_id)
-    asyncio.create_task(send_semantic_update(room_id, semantic_messages))
+    asyncio.create_task(send_semantic_update(room_id, semantic_messages, inference_processes=inference_processes))

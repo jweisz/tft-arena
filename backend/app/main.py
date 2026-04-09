@@ -81,11 +81,6 @@ def _health_payload() -> dict:
 def health_check():
     return _health_payload()
 
-
-@app.get("/health", tags=["Meta"], include_in_schema=False)
-def health_check_legacy():
-    return _health_payload()
-
 app.include_router(rooms_router)
 app.include_router(settings_router)
 app.include_router(auth_router)
