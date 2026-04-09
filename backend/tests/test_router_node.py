@@ -105,3 +105,51 @@ async def test_router_replenishes_budget_to_agent_cap(monkeypatch):
 
     result = await router_module.router_node(state)
     assert result["agent_budgets"]["Analyst"] == 5
+
+
+async def test_router_typed_text_mention_hard_targets_agent():
+    state = {
+        "messages": [HumanMessage(content="@Devil's Advocate I don't think there IS a way to understand anymore.")],
+        "active_agents": [
+            {
+                "id": 1,
+                "name": "Devil's Advocate",
+                "role_description": "Challenges assumptions and identifies weak points.",
+                "relevance_instructions": "Respond to flawed logic, blind spots, and overconfidence.",
+                "system_prompt": "stub",
+                "emoji": "😈",
+                "model": "gpt-4o-mini",
+                "provider": "openai",
+                "token_budget": 3,
+            },
+            {
+                "id": 2,
+                "name": "Logos Architect",
+                "role_description": "Strengthens logical structure and evidence.",
+                "relevance_instructions": "Respond to logic and argument quality.",
+                "system_prompt": "stub",
+                "emoji": "⚖️",
+                "model": "gpt-4o-mini",
+                "provider": "openai",
+                "token_budget": 3,
+            },
+        ],
+        "agent_budgets": {},
+        "agent_statuses": {},
+        "next_speakers": [],
+        "interrupted": False,
+        "emergency_stop": False,
+        "telemetry": [],
+        "mentions": [],
+        "agent_scores": {},
+        "agent_reasons": {},
+        "room_id": 1,
+        "turn_number": 0,
+        "global_instruction": "",
+    }
+
+    result = await router_module.router_node(state)
+
+    assert result["next_speakers"] == ["Devil's Advocate"]
+    assert result["agent_scores"]["Devil's Advocate"] == 10.0
+    assert result["agent_scores"]["Logos Architect"] == 0.0

@@ -166,8 +166,21 @@ export const SidebarLeft: React.FC<Props> = ({ selectedRoomId, onSelectRoom }) =
       setMenuOpenId(null)
       setConfirmDeleteId(null)
     }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      setMenuOpenId(null)
+      setConfirmDeleteId(null)
+    }
+
     window.addEventListener('click', handleClick)
-    return () => window.removeEventListener('click', handleClick)
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('click', handleClick)
+      window.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   return (

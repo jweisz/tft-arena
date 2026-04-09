@@ -13,6 +13,14 @@ interface MentionInputProps {
   onSend: (text: string, mentions?: string[]) => void
 }
 
+const toMentionSlug = (agentName: string) =>
+  agentName
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2019']/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
 export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) => {
   const [showPopup, setShowPopup] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
@@ -20,6 +28,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
   const [selectedIndex, setSelectedIndex] = useState(0)
   const editorRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+  const mentionRangeRef = useRef<Range | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +62,24 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     }
   }, [roomId])
 
+  useEffect(() => {
+    if (!showPopup) {
+      return
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      setShowPopup(false)
+      setFilter('')
+      mentionRangeRef.current = null
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showPopup])
+
   const filteredAgents = agents.filter(a =>
     a.name.toLowerCase().includes(filter.toLowerCase())
   )
@@ -61,9 +88,22 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     if (!editorRef.current) return
 
     const selection = window.getSelection()
-    if (!selection?.rangeCount) return
+    let range: Range | null = null
 
-    const range = selection.getRangeAt(0)
+    if (selection?.rangeCount) {
+      const currentRange = selection.getRangeAt(0)
+      if (editorRef.current.contains(currentRange.startContainer)) {
+        range = currentRange.cloneRange()
+      }
+    }
+
+    if (!range && mentionRangeRef.current) {
+      range = mentionRangeRef.current.cloneRange()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+
+    if (!range) return
 
     // Find the "@" and the filter text to replace it
     // This is a simplified approach: we assume the cursor is right after the filter text
@@ -103,11 +143,12 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
     range.setStartAfter(space)
     range.collapse(true)
 
-    selection.removeAllRanges()
-    selection.addRange(range)
+    selection?.removeAllRanges()
+    selection?.addRange(range)
 
     setShowPopup(false)
     setFilter('')
+    mentionRangeRef.current = null
     editorRef.current.focus()
   }
 
@@ -125,8 +166,10 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
       setFilter(match[1])
       setShowPopup(true)
       setSelectedIndex(0)
+      mentionRangeRef.current = range.cloneRange()
     } else {
       setShowPopup(false)
+      mentionRangeRef.current = null
     }
   }
 
@@ -161,6 +204,13 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showPopup) {
+      if (filteredAgents.length === 0) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setShowPopup(false)
+        }
+        return
+      }
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSelectedIndex(prev => (prev + 1) % filteredAgents.length)
@@ -181,6 +231,8 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
       if (e.key === 'Escape') {
         e.preventDefault()
         setShowPopup(false)
+        setFilter('')
+        mentionRangeRef.current = null
         return
       }
     }
@@ -206,7 +258,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
         if (el.classList.contains('mention-slug')) {
           const name = el.dataset.agent
           if (name) {
-            text += `@${name}`
+            text += `@${toMentionSlug(name)}`
             mentionsSet.add(name)
           }
         } else {
@@ -222,7 +274,7 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
 
     walk(editorRef.current)
 
-    const cleanText = text.trim()
+    const cleanText = text.replace(/\u00A0/g, ' ').trim()
     if (cleanText) {
       onSend(cleanText, Array.from(mentionsSet))
       editorRef.current.innerHTML = ''
@@ -254,7 +306,10 @@ export const MentionInput: React.FC<MentionInputProps> = ({ roomId, onSend }) =>
           {filteredAgents.map((agent, i) => (
             <div
               key={agent.id}
-              onClick={() => insertMention(agent.name)}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                insertMention(agent.name)
+              }}
               style={{
                 padding: '0.75rem',
                 cursor: 'pointer',

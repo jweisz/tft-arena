@@ -62,17 +62,35 @@ describe('ChatArea', () => {
   })
 
   it('loads transcript history and connects the socket for an active room', async () => {
-    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => [
-        { id: 1, role: 'human', content: 'Hi there' },
-        { id: 2, role: 'agent', content: 'Hello back', agent: { name: 'Analyst' } },
-      ],
-    } as Response)
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/messages/')) {
+        return {
+          ok: true,
+          json: async () => [
+            { id: 1, role: 'human', content: '@contrarian_futurist hi there' },
+            { id: 2, role: 'agent', content: 'Hello back', agent: { name: 'Analyst' } },
+          ],
+        } as Response
+      }
 
-    render(<ChatArea roomId={12} />)
+      if (url.includes('/agents')) {
+        return {
+          ok: true,
+          json: async () => [
+            { id: 1, name: 'Contrarian Futurist', role_description: 'Desc', is_active: true },
+          ],
+        } as Response
+      }
 
-    expect(await screen.findByText('Hi there')).toBeInTheDocument()
+      throw new Error(`Unexpected fetch URL: ${url}`)
+    })
+
+    const { container } = render(<ChatArea roomId={12} />)
+
+    expect(await screen.findByText('@Contrarian Futurist')).toBeInTheDocument()
+    expect(screen.queryByText('@contrarian_futurist')).not.toBeInTheDocument()
+    expect(container.querySelector('.mention-slug-transcript')).not.toBeNull()
     expect(screen.getByText('Hello back')).toBeInTheDocument()
     expect(hookState.connect).toHaveBeenCalledTimes(1)
 
@@ -255,6 +273,37 @@ describe('ChatArea', () => {
     await waitFor(() => {
       expect(screen.queryByText('internal-debug')).not.toBeInTheDocument()
     })
+
+    fetchMock.mockRestore()
+  })
+
+  it('shows two-line relevance tooltip with agent header and reason', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response)
+
+    render(<ChatArea roomId={4} />)
+
+    await screen.findByText(/welcome to the arena/i)
+    await user.click(screen.getByRole('button', { name: /send mock message/i }))
+
+    await act(async () => {
+      hookState.onEvent?.({
+        type: 'status_update',
+        statuses: { 'Contrarian Futurist': 'Thinking' },
+        scores: { 'Contrarian Futurist': 10 },
+        reasons: { 'Contrarian Futurist': 'Directly mentioned by user.' },
+        emojis: { 'Contrarian Futurist': '🔮' },
+      })
+    })
+
+    const chip = await screen.findByText('100%')
+    await user.hover(chip)
+
+    expect(await screen.findByText('🔮 Contrarian Futurist (100%)')).toBeInTheDocument()
+    expect(screen.getByText('Directly mentioned by user.')).toBeInTheDocument()
 
     fetchMock.mockRestore()
   })

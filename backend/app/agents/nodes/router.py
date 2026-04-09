@@ -79,6 +79,34 @@ def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any
 
     return scores, reasons
 
+
+def _normalize_apostrophes(text: str) -> str:
+    return text.replace("\u2019", "'")
+
+
+def _extract_text_mentions(text: str, active_agents: List[Dict[str, Any]]) -> List[str]:
+    """Fallback parser for typed @mentions when structured mentions are missing."""
+    if not text:
+        return []
+
+    normalized_text = _normalize_apostrophes(text)
+    found: List[tuple[int, str]] = []
+
+    for agent in active_agents:
+        name = str(agent.get("name", "")).strip()
+        if not name:
+            continue
+
+        escaped_name = re.escape(_normalize_apostrophes(name))
+        pattern = re.compile(rf"(?<!\w)@{escaped_name}(?![\w])", re.IGNORECASE)
+        match = pattern.search(normalized_text)
+        if match:
+            found.append((match.start(), name))
+
+    found.sort(key=lambda item: item[0])
+    ordered_names = [name for _, name in found]
+    return list(dict.fromkeys(ordered_names))
+
 async def eval_speaker_importance(
     messages: List[Any],
     agents: List[Dict[str, Any]],
@@ -264,7 +292,9 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
             )
 
         # Handle @Mention Override
-        mentions = state.get("mentions", [])
+        mentions = list(state.get("mentions", []))
+        if not mentions:
+            mentions = _extract_text_mentions(str(last_msg.content), active_agents)
         if mentions:
             active_mentioned = [name for name in mentions if any(a["name"] == name for a in active_agents)]
             if active_mentioned:

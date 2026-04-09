@@ -23,6 +23,33 @@ interface RelevanceSnapshot {
   emojis: Record<string, string>
 }
 
+interface RelevanceTooltip {
+  visible: boolean
+  header: string
+  reason: string
+  x: number
+  y: number
+}
+
+interface RoomAgent {
+  name: string
+}
+
+const toMentionSlug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2019']/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+const humanizeMentionSlug = (slug: string) =>
+  slug
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+
 const sanitizeDisplayedAgentContent = (text: string, agentName?: string) => {
   if (!text) return text
 
@@ -55,6 +82,58 @@ const sanitizeDisplayedAgentContent = (text: string, agentName?: string) => {
   return sanitized.replace(/\n\s*#{2,}\s*$/, '').trim()
 }
 
+const renderHumanMessageWithMentionSlugs = (text: string, mentionNameBySlug: Record<string, string>) => {
+  const mentionPattern = /@[a-z0-9]+(?:_[a-z0-9]+)*/g
+  const nodes: React.ReactNode[] = []
+  let cursor = 0
+  let match = mentionPattern.exec(text)
+
+  while (match) {
+    const start = match.index
+    const prevChar = start > 0 ? text[start - 1] : ''
+    const isValidBoundary = start === 0 || /\s|\(/.test(prevChar)
+
+    if (!isValidBoundary) {
+      match = mentionPattern.exec(text)
+      continue
+    }
+
+    if (start > cursor) {
+      nodes.push(text.slice(cursor, start))
+    }
+
+    const token = match[0]
+    const slug = token.slice(1)
+    const displayName = mentionNameBySlug[slug] ?? humanizeMentionSlug(slug)
+    nodes.push(
+      <span
+        key={`mention-${start}`}
+        className="mention-slug-transcript"
+        style={{
+          backgroundColor: 'var(--accent-color)',
+          color: '#fff',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          margin: '0 2px',
+          fontWeight: 'bold',
+          display: 'inline-block',
+        }}
+      >
+        @{displayName}
+      </span>,
+    )
+
+    cursor = start + token.length
+    match = mentionPattern.exec(text)
+  }
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor))
+  }
+
+  return nodes.length > 0 ? nodes : text
+}
+
 interface HistoryMessage {
   id: number
   role: ChatMessage['role']
@@ -79,12 +158,13 @@ export const ChatArea: React.FC<{
   onInferenceStatusUpdate?: (processes: InferenceProcessStatus[]) => void
 }> = ({ roomId, onScratchpadUpdate, onTelemetryUpdate, onInferenceStatusUpdate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [mentionNameBySlug, setMentionNameBySlug] = useState<Record<string, string>>({})
   // Per human-message relevance snapshot: msgId -> { scores, reasons }
   const [relevanceMap, setRelevanceMap] = useState<Record<string, RelevanceSnapshot>>({})
   // Tracks the ID of the last human message sent
   const lastHumanMsgIdRef = useRef<string | null>(null)
   // Tooltip state
-  const [tooltip, setTooltip] = useState<{ visible: boolean; text: string; x: number; y: number }>({ visible: false, text: '', x: 0, y: 0 })
+  const [tooltip, setTooltip] = useState<RelevanceTooltip>({ visible: false, header: '', reason: '', x: 0, y: 0 })
   const {
     streamingAgents,
     agentAudioEnabled,
@@ -264,6 +344,48 @@ export const ChatArea: React.FC<{
 
   const { connect, send, disconnect } = useArenaSocket({ roomId, onEvent: handleEvent })
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadAgentMentionMap = async () => {
+      if (!roomId) {
+        if (!cancelled) {
+          setMentionNameBySlug({})
+        }
+        return
+      }
+
+      try {
+        const agents = await apiJson<RoomAgent[]>(`/api/rooms/${roomId}/agents`)
+        if (cancelled) {
+          return
+        }
+
+        const nextMap: Record<string, string> = {}
+        agents.forEach((agent) => {
+          if (typeof agent.name !== 'string') {
+            return
+          }
+          const slug = toMentionSlug(agent.name)
+          if (slug) {
+            nextMap[slug] = agent.name
+          }
+        })
+        setMentionNameBySlug(nextMap)
+      } catch {
+        if (!cancelled) {
+          setMentionNameBySlug({})
+        }
+      }
+    }
+
+    void loadAgentMentionMap()
+
+    return () => {
+      cancelled = true
+    }
+  }, [roomId])
+
   // Load transcript history whenever room changes
   useEffect(() => {
     let cancelled = false
@@ -380,14 +502,15 @@ export const ChatArea: React.FC<{
             padding: '0.4rem 0.7rem',
             fontSize: '0.75rem',
             color: 'var(--text-primary)',
-            maxWidth: '220px',
+            maxWidth: '280px',
             whiteSpace: 'normal',
             lineHeight: '1.4',
             zIndex: 9999,
             pointerEvents: 'none',
             boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
           }}>
-            {tooltip.text}
+            <div style={{ fontWeight: 600 }}>{tooltip.header}</div>
+            <div style={{ marginTop: '0.2rem' }}>{tooltip.reason}</div>
           </div>
         )}
 
@@ -413,7 +536,9 @@ export const ChatArea: React.FC<{
                 </span>
 
                 <div style={markdownStyles}>
-                  <ReactMarkdown>{sanitizeDisplayedAgentContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>
+                  {msg.role === 'human'
+                    ? <div style={{ whiteSpace: 'pre-wrap' }}>{renderHumanMessageWithMentionSlugs(msg.content, mentionNameBySlug)}</div>
+                    : <ReactMarkdown>{sanitizeDisplayedAgentContent(msg.content, msg.role === 'agent' ? msg.agentName : undefined)}</ReactMarkdown>}
                 </div>
 
                 {/* Relevance chips for human messages */}
@@ -433,14 +558,21 @@ export const ChatArea: React.FC<{
                         const reason = snap.reasons[name] || ''
                         const pct = Math.round(score * 10)
                         const emoji = snap.emojis[name] || '🤖'
-                        const tooltipText = `${emoji} ${name} — ${pct}% relevance${reason ? `\n\n${reason}` : ''}`
+                        const tooltipHeader = `${emoji} ${name} (${pct}%)`
+                        const tooltipReason = reason || 'No relevance reason provided.'
 
                         return (
                           <div
                             key={name}
                             onMouseEnter={(e) => {
                               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                              setTooltip({ visible: true, text: tooltipText, x: rect.left + rect.width / 2, y: rect.top })
+                              setTooltip({
+                                visible: true,
+                                header: tooltipHeader,
+                                reason: tooltipReason,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top,
+                              })
                             }}
                             onMouseLeave={() => setTooltip(prev => ({ ...prev, visible: false }))}
                             style={{

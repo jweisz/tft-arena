@@ -144,6 +144,21 @@ export const AgentManager: React.FC = () => {
     }
   }, [isAgentManagerOpen])
 
+  useEffect(() => {
+    if (!isAgentManagerOpen) {
+      return
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        toggleAgentManager()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isAgentManagerOpen, toggleAgentManager])
+
   // Get a flat list of all models for the unified dropdown
   const allModels = useMemo(
     () => availableModels.flatMap(p => p.models.map(m => ({ provider: p.provider, model: m }))),
@@ -507,8 +522,14 @@ export const AgentManager: React.FC = () => {
   if (!isAgentManagerOpen) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1001, backdropFilter: 'blur(3px)' }}>
-      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: editing ? (promptPreviewOpen ? '1000px' : '700px') : '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: editing ? 'hidden' : 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', transition: 'width 0.2s ease' }}>
+    <div
+      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1001, backdropFilter: 'blur(3px)' }}
+      onClick={toggleAgentManager}
+    >
+      <div
+        style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2rem', width: editing ? (promptPreviewOpen ? '1000px' : '700px') : '550px', maxWidth: '95vw', maxHeight: '90vh', overflowY: editing ? 'hidden' : 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', transition: 'width 0.2s ease' }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>👤 Agent Management</h2>
           <button onClick={toggleAgentManager} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>

@@ -70,4 +70,51 @@ describe('SettingsModal', () => {
     fetchMock.mockRestore()
   })
 
+  it('closes the modal on Escape', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+
+    render(<SettingsModal />)
+
+    expect(await screen.findByRole('heading', { name: /settings/i })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().isSettingsOpen).toBe(false)
+      expect(screen.queryByRole('heading', { name: /settings/i })).not.toBeInTheDocument()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it('closes the modal when clicking the backdrop', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+
+    const { container } = render(<SettingsModal />)
+
+    expect(await screen.findByRole('heading', { name: /settings/i })).toBeInTheDocument()
+    const backdrop = container.firstElementChild as HTMLElement | null
+    expect(backdrop).not.toBeNull()
+    if (!backdrop) {
+      fetchMock.mockRestore()
+      throw new Error('settings backdrop missing')
+    }
+
+    fireEvent.click(backdrop)
+
+    await waitFor(() => {
+      expect(useUIStore.getState().isSettingsOpen).toBe(false)
+      expect(screen.queryByRole('heading', { name: /settings/i })).not.toBeInTheDocument()
+    })
+
+    fetchMock.mockRestore()
+  })
+
 })

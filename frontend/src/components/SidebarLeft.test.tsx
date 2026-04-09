@@ -67,4 +67,37 @@ describe('SidebarLeft', () => {
 
     fetchMock.mockRestore()
   })
+
+  it('closes the room actions popup on Escape', async () => {
+    const onSelectRoom = vi.fn()
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 101, name: 'Alpha Room', created_at: '2026-03-28T00:00:00Z' }],
+    } as Response)
+
+    const { container } = render(<SidebarLeft selectedRoomId={101} onSelectRoom={onSelectRoom} />)
+
+    expect(await screen.findByText('Alpha Room')).toBeInTheDocument()
+
+    const roomEntry = screen.getByText('Alpha Room').closest('li')
+    expect(roomEntry).not.toBeNull()
+    const menuButton = roomEntry?.querySelector('button') as HTMLButtonElement | null
+    expect(menuButton).not.toBeNull()
+    if (!menuButton) {
+      fetchMock.mockRestore()
+      throw new Error('menu button missing')
+    }
+
+    fireEvent.click(menuButton)
+    expect(screen.getByText('Rename')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Rename')).not.toBeInTheDocument()
+    })
+
+    expect(container).toBeTruthy()
+    fetchMock.mockRestore()
+  })
 })

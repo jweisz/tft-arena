@@ -298,4 +298,53 @@ Surface trade-offs and feedback loops.`
     alertMock.mockRestore()
     fetchMock.mockRestore()
   })
+
+  it('closes the modal on Escape', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+
+    render(<AgentManager />)
+
+    expect(screen.getByText(/agent management/i)).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().isAgentManagerOpen).toBe(false)
+      expect(screen.queryByText(/agent management/i)).not.toBeInTheDocument()
+    })
+
+    fetchMock.mockRestore()
+  })
+
+  it('closes the modal when clicking the backdrop', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+
+    const { container } = render(<AgentManager />)
+
+    expect(await screen.findByText(/agent management/i)).toBeInTheDocument()
+    const backdrop = container.firstElementChild as HTMLElement | null
+    expect(backdrop).not.toBeNull()
+    if (!backdrop) {
+      fetchMock.mockRestore()
+      throw new Error('agent manager backdrop missing')
+    }
+
+    fireEvent.click(backdrop)
+
+    await waitFor(() => {
+      expect(useUIStore.getState().isAgentManagerOpen).toBe(false)
+      expect(screen.queryByText(/agent management/i)).not.toBeInTheDocument()
+    })
+
+    fetchMock.mockRestore()
+  })
 })

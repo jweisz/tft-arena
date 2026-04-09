@@ -17,6 +17,8 @@ services:
       # SQLite paths are stored in a Docker volume so they persist across restarts.
       DATABASE_URL: "sqlite:////data/tft_arena.db"
       LANGMEM_CHROMA_PATH: "/data/chromadb"
+      # Docker sync can miss native FS events; force polling for reliable reloads.
+      WATCHFILES_FORCE_POLLING: "true"
       # Docker Desktop resolves host.docker.internal automatically on macOS/Windows.
       # Override OLLAMA_BASE_URL for remote Ollama setups.
       OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"

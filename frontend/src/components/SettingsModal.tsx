@@ -177,6 +177,21 @@ export const SettingsModal: React.FC = () => {
     }
   }, [isSettingsOpen, checkOllamaConnection])
 
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        toggleSettings()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isSettingsOpen, toggleSettings])
+
   const selectedNonAgent = (() => {
     const hasSelection = availableModels.some((provider) =>
       provider.provider === nonAgentProvider && provider.models.includes(nonAgentModel),
@@ -231,7 +246,9 @@ export const SettingsModal: React.FC = () => {
       backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
       justifyContent: 'center', alignItems: 'center', zIndex: 1000,
       backdropFilter: 'blur(2px)'
-    }}>
+    }}
+    onClick={toggleSettings}
+    >
       <div style={{
         backgroundColor: 'var(--bg-primary)',
         border: '1px solid var(--border-color)',
@@ -242,7 +259,9 @@ export const SettingsModal: React.FC = () => {
         maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
-      }}>
+      }}
+      onClick={(event) => event.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>⚙️ Settings</h2>
           <button onClick={toggleSettings} style={{ backgroundColor: 'transparent', border: 'none', fontSize: '1.5rem', padding: '0 0.5rem', cursor: 'pointer' }}>&times;</button>
