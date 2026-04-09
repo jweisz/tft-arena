@@ -48,27 +48,31 @@ interface UseArenaSocketOptions {
 export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const onEventRef = useRef(onEvent)
-  const connectRef = useRef<() => void>(() => {})
-  const shouldReconnectRef = useRef(true)
-  const reconnectTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     onEventRef.current = onEvent
   }, [onEvent])
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return
-
-    if (reconnectTimerRef.current !== null) {
-      window.clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     const ws = new WebSocket(wsUrlWithAuth(`/api/chat/${roomId}/stream`))
 
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data) as WSEvent
+        if (data.type === 'status_update') {
+          const { updateAgentStatus, setAgentScores } = useUIStore.getState()
+          Object.entries(data.statuses).forEach(([name, status]) => {
+            updateAgentStatus(name, status)
+          })
+          if (data.scores) {
+            setAgentScores(data.scores)
+          }
+          if (data.reasons) {
+            useUIStore.getState().setAgentReasons(data.reasons)
+          }
+        }
         if (data.type === 'telemetry' && data.data.length > 0) {
           const { addLatencyPoints } = useUIStore.getState();
           addLatencyPoints(data.data.map(p => ({
@@ -83,24 +87,10 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
     }
 
     ws.onerror = (e) => console.error('WebSocket error', e)
-    ws.onclose = () => {
-      console.log('WebSocket closed for room', roomId)
-      wsRef.current = null
-      if (!shouldReconnectRef.current) {
-        return
-      }
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null
-        connectRef.current()
-      }, 800)
-    }
+    ws.onclose = () => console.log('WebSocket closed for room', roomId)
 
     wsRef.current = ws
   }, [roomId])
-
-  useEffect(() => {
-    connectRef.current = connect
-  }, [connect])
 
   const send = useCallback((text: string, mentions?: string[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -112,25 +102,9 @@ export function useArenaSocket({ roomId, onEvent }: UseArenaSocketOptions) {
   }, [connect])
 
   const disconnect = useCallback(() => {
-    shouldReconnectRef.current = false
-    if (reconnectTimerRef.current !== null) {
-      window.clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
     wsRef.current?.close()
     wsRef.current = null
   }, [])
-
-  useEffect(() => {
-    shouldReconnectRef.current = true
-    return () => {
-      shouldReconnectRef.current = false
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
-      }
-    }
-  }, [roomId])
 
   return { connect, send, disconnect }
 }
