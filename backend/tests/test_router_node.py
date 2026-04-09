@@ -69,3 +69,39 @@ async def test_router_heuristic_fallback_avoids_first_agent_bias(monkeypatch):
     assert result["next_speakers"] == ["Muse"]
     assert result["agent_scores"]["Muse"] > result["agent_scores"]["Logos Architect"]
     assert result["agent_scores"]["Logos Architect"] < router_module.PARTICIPATION_THRESHOLD
+
+
+async def test_router_replenishes_budget_to_agent_cap(monkeypatch):
+    monkeypatch.setattr(router_module, "get_llm", lambda provider, model_name, temperature=0: BrokenRouterLLM())
+
+    state = {
+        "messages": [HumanMessage(content="Need a quick review.")],
+        "active_agents": [
+            {
+                "id": 1,
+                "name": "Analyst",
+                "role_description": "Analyzes tradeoffs.",
+                "relevance_instructions": "Respond to risk and validation prompts.",
+                "system_prompt": "stub",
+                "emoji": "🧠",
+                "model": "gpt-4o-mini",
+                "provider": "openai",
+                "token_budget": 5,
+            }
+        ],
+        "agent_budgets": {"Analyst": 1},
+        "agent_statuses": {},
+        "next_speakers": [],
+        "interrupted": False,
+        "emergency_stop": False,
+        "telemetry": [],
+        "mentions": [],
+        "agent_scores": {},
+        "agent_reasons": {},
+        "room_id": 1,
+        "turn_number": 0,
+        "global_instruction": "",
+    }
+
+    result = await router_module.router_node(state)
+    assert result["agent_budgets"]["Analyst"] == 5

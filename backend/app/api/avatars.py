@@ -7,7 +7,8 @@ Offers two modes:
 import os
 import base64
 import hashlib
-from fastapi import APIRouter, HTTPException
+import html
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/avatars", tags=["Avatars"])
@@ -27,9 +28,10 @@ PRESET_AVATARS = {
 
 def _make_svg_avatar(color: str, letter: str) -> str:
     """Generate a minimal SVG avatar circle with a letter."""
+    safe_letter = html.escape(letter.upper(), quote=True)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-  <circle cx="24" cy="24" r="24" fill="{color}"/>
-  <text x="24" y="30" text-anchor="middle" font-size="22" font-family="system-ui" fill="white" font-weight="bold">{letter.upper()}</text>
+    <circle cx="24" cy="24" r="24" fill="{color}"/>
+    <text x="24" y="30" text-anchor="middle" font-size="22" font-family="system-ui" fill="white" font-weight="bold">{safe_letter}</text>
 </svg>'''
 
 def _role_to_color(role_description: str) -> str:

@@ -3,11 +3,13 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install uv for fast dependency management
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
-COPY . .
-RUN uv pip install --system -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY app ./app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

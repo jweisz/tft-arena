@@ -9,6 +9,7 @@ from typing import List
 from ..models import schema
 from ..schemas.pydantic_models import AgentCreate, AgentResponse, AgentReorderRequest
 from ..models.db import get_db
+from ..core.llm import invalidate_settings_cache
 
 from ..services.prompt_loader import prompt_loader
 
@@ -38,6 +39,7 @@ def create_agent(agent_in: AgentCreate, db: Session = Depends(get_db)):
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    invalidate_settings_cache()
     return agent
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -57,6 +59,7 @@ def update_agent(agent_id: int, agent_in: AgentCreate, db: Session = Depends(get
         setattr(agent, key, val)
     db.commit()
     db.refresh(agent)
+    invalidate_settings_cache()
     return agent
 
 
@@ -73,14 +76,19 @@ def reorder_agents(reorder_in: AgentReorderRequest, db: Session = Depends(get_db
         agents_by_id[agent_id].sort_order = index
 
     db.commit()
+    invalidate_settings_cache()
     return db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
 
 @router.delete("/{agent_id}")
-def delete_agent(agent_id: int, db: Session = Depends(get_db)):
+async def delete_agent(agent_id: int, db: Session = Depends(get_db)):
+    from ..agents.memory import delete_agent_memories
+
     print(f"--- ATTEMPTING DELETE AGENT {agent_id} ---")
     agent = db.query(schema.Agent).filter(schema.Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    await delete_agent_memories(agent.name)
     db.delete(agent)
     db.commit()
+    invalidate_settings_cache()
     return {"message": f"Agent {agent_id} deleted"}

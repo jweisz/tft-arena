@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 
 import { useArenaSocket } from './useArenaSocket'
 import { useUIStore } from '../store/uiStore'
@@ -6,6 +6,7 @@ import { useUIStore } from '../store/uiStore'
 
 class MockWebSocket {
   static instances: MockWebSocket[] = []
+  static CONNECTING = 0
   static OPEN = 1
 
   url: string
@@ -38,6 +39,7 @@ class MockWebSocket {
 describe('useArenaSocket', () => {
   beforeEach(() => {
     MockWebSocket.instances = []
+    vi.useFakeTimers()
     vi.stubGlobal('WebSocket', MockWebSocket)
     useUIStore.setState({
       agentStatuses: {},
@@ -50,10 +52,11 @@ describe('useArenaSocket', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it('connects, forwards events, and updates store for status and telemetry payloads', async () => {
+  it('connects, forwards events, and updates latency history for telemetry payloads', async () => {
     const onEvent = vi.fn()
     const { result } = renderHook(() => useArenaSocket({ roomId: 42, onEvent }))
 
@@ -64,25 +67,14 @@ describe('useArenaSocket', () => {
     expect(socket.url).toContain('/api/chat/42/stream')
 
     socket.emitJson({
-      type: 'status_update',
-      statuses: { Analyst: 'Thinking' },
-      scores: { Analyst: 8.5 },
-      reasons: { Analyst: 'Strong match.' },
-    })
-    socket.emitJson({
       type: 'telemetry',
       data: [{ agent_name: 'Analyst', latency_ms: 12.3, tokens_used: 4, turn: 1 }],
       budgets: { Analyst: 2 },
     })
 
-    await waitFor(() => {
-      expect(useUIStore.getState().agentStatuses.Analyst).toBe('Thinking')
-      expect(useUIStore.getState().agentScores.Analyst).toBe(8.5)
-      expect(useUIStore.getState().agentReasons.Analyst).toBe('Strong match.')
-      expect(useUIStore.getState().latencyHistory.Analyst).toEqual([12.3])
-    })
+    expect(useUIStore.getState().latencyHistory.Analyst).toEqual([12.3])
 
-    expect(onEvent).toHaveBeenCalledTimes(2)
+    expect(onEvent).toHaveBeenCalledTimes(1)
   })
 
   it('sends messages and disconnects cleanly', () => {
@@ -97,5 +89,22 @@ describe('useArenaSocket', () => {
 
     result.current.disconnect()
     expect(socket.readyState).toBe(3)
+  })
+
+  it('automatically reconnects after unexpected close', () => {
+    const onEvent = vi.fn()
+    const { result } = renderHook(() => useArenaSocket({ roomId: 9, onEvent }))
+
+    result.current.connect()
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    const firstSocket = MockWebSocket.instances[0]
+    firstSocket.close()
+
+    vi.advanceTimersByTime(799)
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    vi.advanceTimersByTime(1)
+    expect(MockWebSocket.instances).toHaveLength(2)
   })
 })

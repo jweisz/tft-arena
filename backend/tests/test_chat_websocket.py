@@ -272,3 +272,32 @@ def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session
     assert len(token_events) == 1
     assert token_events[0]["agent"] == agent.name
     assert token_events[0]["token"] == "Visible output"
+
+
+def test_chat_websocket_initial_state_includes_recent_history(client, db_session, monkeypatch):
+    room, agent = _seed_room_with_agent(db_session)
+    db_session.add(schema.Message(room_id=room.id, role="agent", content="Prior context", agent_id=agent.id))
+    db_session.commit()
+
+    captured_messages: list[str] = []
+
+    class StubGraph:
+        async def astream_events(self, initial_state, version: str) -> AsyncIterator[dict]:
+            assert version == "v2"
+            captured_messages.extend([str(message.content) for message in initial_state["messages"]])
+            if False:
+                yield {}
+
+    async def fake_semantic(_messages):
+        return {"annotations": [], "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []}}
+
+    monkeypatch.setattr("app.api.chat.graph", StubGraph())
+    monkeypatch.setattr("app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic)
+
+    with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
+        assert websocket.receive_json() == {"type": "activity_stats", "stats": {agent.name: 1}}
+        assert websocket.receive_json()["type"] == "inference_status"
+        websocket.send_text('{"text":"latest human turn","mentions":[]}')
+        _collect_events_until(websocket, "done")
+
+    assert captured_messages == ["Prior context", "latest human turn"]

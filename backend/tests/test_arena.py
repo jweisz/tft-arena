@@ -21,7 +21,7 @@ hitting any LLM API or database.
 """
 import pytest
 from langchain_core.messages import HumanMessage, AIMessage
-from app.agents.nodes.router import router_node, BUDGET_REPLENISH_AMOUNT
+from app.agents.nodes.router import router_node
 from app.agents.context import maybe_summarize, RECENT_WINDOW
 
 
@@ -93,7 +93,7 @@ class TestBudgetSystem:
         assert result["agent_budgets"]["Analyst"] == 2000
 
     async def test_budget_replenished_on_human_message(self):
-        """Speaking budget is topped up (capped at token_budget) on human turns."""
+        """Speaking budget is replenished to token_budget on human turns."""
         agent = make_agent("Analyst", budget=8192)
         # Start with a depleted budget
         state = make_state(
@@ -102,8 +102,7 @@ class TestBudgetSystem:
             messages=[HumanMessage(content="new question")],
         )
         result = await router_node(state)
-        expected = min(100 + BUDGET_REPLENISH_AMOUNT, 8192)
-        assert result["agent_budgets"]["Analyst"] == expected
+        assert result["agent_budgets"]["Analyst"] == 8192
 
     async def test_budget_does_not_exceed_token_budget_cap(self):
         """Budget replenishment does not exceed the per-agent token_budget cap."""
@@ -114,7 +113,7 @@ class TestBudgetSystem:
             messages=[HumanMessage(content="hello")],
         )
         result = await router_node(state)
-        assert result["agent_budgets"]["Analyst"] == min(900 + BUDGET_REPLENISH_AMOUNT, 1000)
+        assert result["agent_budgets"]["Analyst"] == 1000
 
     async def test_agent_with_zero_budget_not_selected(self):
         """An agent with zero remaining budget is excluded from next_speakers."""

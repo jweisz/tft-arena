@@ -38,6 +38,18 @@ class Room(Base):
 
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
     room_agents = relationship("RoomAgent", back_populates="room", cascade="all, delete-orphan")
+    control_state = relationship("RoomControlState", back_populates="room", cascade="all, delete-orphan", uselist=False)
+
+
+class RoomControlState(Base):
+    """Room-scoped operational controls that should survive process restarts."""
+    __tablename__ = "room_control_states"
+
+    room_id = Column(Integer, ForeignKey("rooms.id"), primary_key=True)
+    emergency_stop = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    room = relationship("Room", back_populates="control_state")
 
 class Agent(Base):
     """Global pool of agent blueprints."""

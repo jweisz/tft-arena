@@ -2,17 +2,20 @@
 LangMem integration backed by ChromaDB-embedded SQLite.
 
 ChromaDB runs fully in-process — no extra container required.
-Data is persisted on disk at LANGMEM_CHROMA_PATH (default: .langmem/chromadb).
+Data is persisted on disk at LANGMEM_CHROMA_PATH (default: backend/.data/chromadb).
 
 Two namespaced collections:
   • room_{room_id}_agent_{agent_name}  — room-scoped agent memories
   • global_user_profile                — cross-room user knowledge
 """
 import os
+import hashlib
+import re
 from pathlib import Path
-from typing import Optional
 
-CHROMA_PATH = os.environ.get("LANGMEM_CHROMA_PATH", str(Path(".langmem/chromadb")))
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_CHROMA_PATH = BACKEND_DIR / ".data" / "chromadb"
+CHROMA_PATH = os.environ.get("LANGMEM_CHROMA_PATH", str(DEFAULT_CHROMA_PATH))
 Path(CHROMA_PATH).mkdir(parents=True, exist_ok=True)
 
 try:
@@ -43,7 +46,9 @@ def _get_collection(name: str):
 
 
 def _room_collection_name(room_id: int, agent_name: str) -> str:
-    return f"room_{room_id}_{agent_name[:20]}"
+    slug = re.sub(r"[^a-z0-9]+", "_", agent_name.lower()).strip("_")[:24] or "agent"
+    digest = hashlib.sha1(agent_name.encode("utf-8")).hexdigest()[:10]
+    return f"room_{room_id}_{slug}_{digest}"
 
 
 def _user_collection_name() -> str:
@@ -135,6 +140,21 @@ async def delete_room_memories(room_id: int):
         for col in all_cols:
             name = col.name if hasattr(col, "name") else str(col)
             if name.startswith(target_prefix):
+                _chroma_client.delete_collection(name)
+    except Exception:
+        pass
+
+
+async def delete_agent_memories(agent_name: str):
+    """Delete room-scoped memory collections for a deleted agent."""
+    if not _langmem_available or not _chroma_client:
+        return
+    try:
+        target_digest = hashlib.sha1(agent_name.encode("utf-8")).hexdigest()[:10]
+        all_cols = _chroma_client.list_collections()
+        for col in all_cols:
+            name = col.name if hasattr(col, "name") else str(col)
+            if name.startswith("room_") and name.endswith(f"_{target_digest}"):
                 _chroma_client.delete_collection(name)
     except Exception:
         pass

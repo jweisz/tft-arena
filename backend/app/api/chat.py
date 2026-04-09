@@ -133,6 +133,7 @@ async def websocket_endpoint(
                 active_agents=active_agents,
                 agent_budgets=agent_budgets,
                 global_instruction=current_global_instruction,
+                db=db,
                 auth_context=auth_context.to_state_payload(),
             )
 

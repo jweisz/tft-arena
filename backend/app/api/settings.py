@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..models import schema
-from ..schemas import pydantic_models
 from ..models.db import get_db
+from ..core.llm import invalidate_settings_cache
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
@@ -52,4 +52,5 @@ def update_settings(settings_in: dict, db: Session = Depends(get_db)):
         settings.non_agent_model = settings_in["non_agent_model"]
 
     db.commit()
+    invalidate_settings_cache()
     return {"status": "updated"}

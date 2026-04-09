@@ -63,7 +63,7 @@ uv sync --extra dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-2. In a new terminal, start frontend:
+1. In a new terminal, start frontend:
 
 ```bash
 cd frontend
@@ -110,13 +110,6 @@ docker compose down
 ```
 
 ### Local workflows
-
-Optional compatibility fallback for backend dependencies:
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
 
 Optional task-runner shortcuts (if you use mise):
 
@@ -167,6 +160,11 @@ npm run build
 3. Dependency issues after updates: rerun `uv sync --extra dev` in `backend/` and `npm install` in `frontend/`.
 
 ## Database Inspection
+
+Local backend persistence defaults to a single directory:
+
+- `backend/.data/tft_arena.db` (SQLite)
+- `backend/.data/chromadb/` (ChromaDB)
 
 From `backend/` (with venv active), inspect table row counts:
 

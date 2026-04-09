@@ -73,6 +73,12 @@ export const SettingsModal: React.FC = () => {
   const [openaiKey, setOpenAIKey] = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
+  const [hasOpenAIKey, setHasOpenAIKey] = useState(false)
+  const [hasAnthropicKey, setHasAnthropicKey] = useState(false)
+  const [hasGeminiKey, setHasGeminiKey] = useState(false)
+  const [clearOpenAIKey, setClearOpenAIKey] = useState(false)
+  const [clearAnthropicKey, setClearAnthropicKey] = useState(false)
+  const [clearGeminiKey, setClearGeminiKey] = useState(false)
   const [ollamaUrl, setOllamaUrl] = useState('http://host.docker.internal:11434')
   const [defaultBudget, setDefaultBudget] = useState(3)
   const [globalInstruction, setGlobalInstruction] = useState('')
@@ -130,6 +136,15 @@ export const SettingsModal: React.FC = () => {
       try {
         const data = await apiJson<Record<string, string | number | null>>('/api/settings/')
         if (!cancelled) {
+          setHasOpenAIKey(Boolean(data.openai_api_key))
+          setHasAnthropicKey(Boolean(data.anthropic_api_key))
+          setHasGeminiKey(Boolean(data.google_api_key))
+          setOpenAIKey('')
+          setAnthropicKey('')
+          setGeminiKey('')
+          setClearOpenAIKey(false)
+          setClearAnthropicKey(false)
+          setClearGeminiKey(false)
           if (data.ollama_base_url) {
             setOllamaUrl(String(data.ollama_base_url))
           }
@@ -162,38 +177,39 @@ export const SettingsModal: React.FC = () => {
     }
   }, [isSettingsOpen, checkOllamaConnection])
 
-  useEffect(() => {
-    if (availableModels.length === 0) {
-      return
-    }
-
+  const selectedNonAgent = (() => {
     const hasSelection = availableModels.some((provider) =>
       provider.provider === nonAgentProvider && provider.models.includes(nonAgentModel),
     )
     if (hasSelection) {
-      return
+      return { provider: nonAgentProvider, model: nonAgentModel }
     }
 
     const firstAvailable = availableModels.find((provider) => provider.models.length > 0)
-    if (!firstAvailable) {
-      return
+    if (firstAvailable) {
+      return { provider: firstAvailable.provider, model: firstAvailable.models[0] }
     }
 
-    setNonAgentProvider(firstAvailable.provider)
-    setNonAgentModel(firstAvailable.models[0])
-  }, [availableModels, nonAgentProvider, nonAgentModel])
+    return { provider: '', model: '' }
+  })()
 
   const handleSave = async () => {
     const payload: Record<string, string | number> = {}
-    if (openaiKey) payload.openai_api_key = openaiKey
-    if (anthropicKey) payload.anthropic_api_key = anthropicKey
-    if (geminiKey) payload.google_api_key = geminiKey
+    if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim()
+    else if (clearOpenAIKey) payload.openai_api_key = ''
+
+    if (anthropicKey.trim()) payload.anthropic_api_key = anthropicKey.trim()
+    else if (clearAnthropicKey) payload.anthropic_api_key = ''
+
+    if (geminiKey.trim()) payload.google_api_key = geminiKey.trim()
+    else if (clearGeminiKey) payload.google_api_key = ''
+
     if (ollamaUrl) payload.ollama_base_url = ollamaUrl
     payload.default_agent_turn_budget = defaultBudget
     payload.global_system_instruction = globalInstruction
-    if (nonAgentProvider && nonAgentModel) {
-      payload.non_agent_provider = nonAgentProvider
-      payload.non_agent_model = nonAgentModel
+    if (selectedNonAgent.provider && selectedNonAgent.model) {
+      payload.non_agent_provider = selectedNonAgent.provider
+      payload.non_agent_model = selectedNonAgent.model
     }
 
     // Fire and forget save
@@ -333,21 +349,78 @@ export const SettingsModal: React.FC = () => {
         {activeTab === 'models' && (
           <div style={{ animation: 'fadeSlideIn 0.2s ease' }}>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-              Enter your API keys below to unlock models from these providers. Keys are stored locally in SQLite. Leave blank to keep existing keys.
+              Enter your API keys below to unlock models from these providers. Keys are stored locally in SQLite.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}>OpenAI API Key</label>
-                <input type="password" value={openaiKey} onChange={e => setOpenAIKey(e.target.value)} placeholder="sk-..." />
+                <input
+                  type="password"
+                  value={openaiKey}
+                  onChange={e => {
+                    setOpenAIKey(e.target.value)
+                    if (e.target.value.trim()) {
+                      setClearOpenAIKey(false)
+                    }
+                  }}
+                  placeholder="sk-..."
+                />
+                {(hasOpenAIKey || clearOpenAIKey) && !openaiKey.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setClearOpenAIKey(prev => !prev)}
+                    style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: clearOpenAIKey ? '#ef4444' : 'var(--text-secondary)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {clearOpenAIKey ? 'OpenAI key will be removed on save' : 'Remove saved OpenAI key'}
+                  </button>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}>Anthropic API Key</label>
-                <input type="password" value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-..." />
+                <input
+                  type="password"
+                  value={anthropicKey}
+                  onChange={e => {
+                    setAnthropicKey(e.target.value)
+                    if (e.target.value.trim()) {
+                      setClearAnthropicKey(false)
+                    }
+                  }}
+                  placeholder="sk-ant-..."
+                />
+                {(hasAnthropicKey || clearAnthropicKey) && !anthropicKey.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setClearAnthropicKey(prev => !prev)}
+                    style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: clearAnthropicKey ? '#ef4444' : 'var(--text-secondary)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {clearAnthropicKey ? 'Anthropic key will be removed on save' : 'Remove saved Anthropic key'}
+                  </button>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}>Google Gemini API Key</label>
-                <input type="password" value={geminiKey} onChange={e => setGeminiKey(e.target.value)} placeholder="AIza..." />
+                <input
+                  type="password"
+                  value={geminiKey}
+                  onChange={e => {
+                    setGeminiKey(e.target.value)
+                    if (e.target.value.trim()) {
+                      setClearGeminiKey(false)
+                    }
+                  }}
+                  placeholder="AIza..."
+                />
+                {(hasGeminiKey || clearGeminiKey) && !geminiKey.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setClearGeminiKey(prev => !prev)}
+                    style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: clearGeminiKey ? '#ef4444' : 'var(--text-secondary)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {clearGeminiKey ? 'Gemini key will be removed on save' : 'Remove saved Gemini key'}
+                  </button>
+                )}
               </div>
 
               <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
@@ -415,7 +488,7 @@ export const SettingsModal: React.FC = () => {
                 </div>
               ) : (
                 <select
-                  value={encodeModelSelection(nonAgentProvider, nonAgentModel)}
+                  value={encodeModelSelection(selectedNonAgent.provider, selectedNonAgent.model)}
                   onChange={(e) => {
                     const decoded = decodeModelSelection(e.target.value)
                     setNonAgentProvider(decoded.provider)

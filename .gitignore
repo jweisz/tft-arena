@@ -374,6 +374,7 @@ vite.config.ts.timestamp-*
 .docker/
 .idea/
 .langmem/
+/backend/.data/
 .vscode/
 .DS_Store
 .AppleDouble

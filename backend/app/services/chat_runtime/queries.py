@@ -13,7 +13,7 @@ def load_agents(room: schema.Room | None, db: Session, default_budget: int = 3) 
 
     active_mappings = db.query(schema.RoomAgent).filter(
         schema.RoomAgent.room_id == room.id,
-        schema.RoomAgent.is_active == True,
+        schema.RoomAgent.is_active,
     ).all()
     active_agent_ids = [mapping.agent_id for mapping in active_mappings]
 

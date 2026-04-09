@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, TypedDict, Sequence, List, Dict, Optional
+from typing import Annotated, TypedDict, Sequence, List, Dict
 
 from langchain_core.messages import BaseMessage
 
@@ -51,6 +51,7 @@ class ArenaState(TypedDict):
     mentions: List[str]  # Names of the agents specifically tagged with @
     agent_scores: Dict[str, float]  # Scores calculated by the importance evaluator
     agent_reasons: Dict[str, str]   # Short reasoning text per agent from the router
+    router_runtime: Annotated[Dict[str, float], operator.ior]
 
     room_id: int
     turn_number: int

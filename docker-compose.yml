@@ -4,7 +4,7 @@ name: tft-arena
 # Auto-syncs file changes into containers:
 #   Backend: Python files -> /app (uvicorn --reload picks them up)
 #   Frontend: src/ and public/ -> /app/... (Vite HMR picks them up)
-#   Both: Rebuild image if requirements.txt / package.json change
+#   Both: Rebuild image if dependency manifests/locks change
 
 services:
   backend:
@@ -30,7 +30,9 @@ services:
           target: /app/app
         # Rebuild if backend dependencies change.
         - action: rebuild
-          path: ./backend/requirements.txt
+          path: ./backend/pyproject.toml
+        - action: rebuild
+          path: ./backend/uv.lock
 
   frontend:
     build:

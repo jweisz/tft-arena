@@ -1,4 +1,3 @@
-import os
 import yaml
 from typing import List, Dict, Optional
 from pathlib import Path

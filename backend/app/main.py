@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from sqlalchemy import inspect, text
 from app.models.db import engine, Base
 from app.api.rooms import router as rooms_router
 from app.api.settings import router as settings_router
@@ -16,7 +17,6 @@ from app.api.providers import router as providers_router
 Base.metadata.create_all(bind=engine)
 
 # --- Lightweight Migrations ---
-from sqlalchemy import inspect, text
 inspector = inspect(engine)
 columns = [c["name"] for c in inspector.get_columns("agents")]
 if "emoji" not in columns:

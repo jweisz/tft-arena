@@ -39,6 +39,32 @@ run = "docker compose watch"
 description = "Stop and remove all Docker containers"
 run = "docker compose down"
 
+# ── Lint & Format ────────────────────────────
+
+[tasks.lint-frontend]
+description = "Run ESLint on the frontend"
+dir = "frontend"
+run = "npm run lint"
+
+[tasks.format-frontend]
+description = "Run Prettier on the frontend"
+dir = "frontend"
+run = "npm run format"
+
+[tasks.lint-backend]
+description = "Run Ruff linter on the backend"
+dir = "backend"
+run = "uv run ruff check ."
+
+[tasks.format-backend]
+description = "Run Ruff formatter on the backend"
+dir = "backend"
+run = "uv run ruff format ."
+
+[tasks.lint]
+description = "Lint both frontend and backend"
+depends = ["lint-frontend", "lint-backend"]
+
 # ── Tests ─────────────────────────────────────
 
 [tasks.test]

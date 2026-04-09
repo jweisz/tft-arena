@@ -7,7 +7,11 @@ handler reads from this dict when constructing the initial state.
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from ..models import schema
+from ..models.db import get_db
 
 router = APIRouter(prefix="/api/rooms", tags=["Control"])
 
@@ -28,9 +32,30 @@ def clear_turn_task(room_id: int, task: asyncio.Task[Any] | None = None) -> None
     if task is None or current is task:
         active_turn_tasks.pop(room_id, None)
 
+
+def get_emergency_flag(db: Session, room_id: int) -> bool:
+    if room_id in emergency_flags:
+        return emergency_flags[room_id]
+
+    control_state = db.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room_id).first()
+    value = bool(control_state.emergency_stop) if control_state else False
+    emergency_flags[room_id] = value
+    return value
+
+
+def set_emergency_flag(db: Session, room_id: int, stopped: bool) -> None:
+    control_state = db.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room_id).first()
+    if control_state is None:
+        control_state = schema.RoomControlState(room_id=room_id, emergency_stop=stopped)
+        db.add(control_state)
+    else:
+        control_state.emergency_stop = stopped
+    db.commit()
+    emergency_flags[room_id] = stopped
+
 @router.post("/{room_id}/emergency-stop")
-def emergency_stop(room_id: int):
-    emergency_flags[room_id] = True
+def emergency_stop(room_id: int, db: Session = Depends(get_db)):
+    set_emergency_flag(db, room_id, True)
     task = active_turn_tasks.get(room_id)
     cancelled = False
     if task and not task.done():
@@ -39,6 +64,6 @@ def emergency_stop(room_id: int):
     return {"status": "stopped", "room_id": room_id, "cancelled": cancelled}
 
 @router.post("/{room_id}/resume")
-def resume(room_id: int):
-    emergency_flags[room_id] = False
+def resume(room_id: int, db: Session = Depends(get_db)):
+    set_emergency_flag(db, room_id, False)
     return {"status": "resumed", "room_id": room_id}

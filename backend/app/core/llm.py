@@ -1,4 +1,5 @@
 import os
+import time
 from langchain_community.chat_models import ChatLiteLLM
 from sqlalchemy.orm import Session
 from ..models.db import SessionLocal
@@ -10,14 +11,35 @@ from ..models.schema import Agent, GlobalSettings
 DEFAULT_OLLAMA_URL = os.environ.get(
     "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
 )
+SETTINGS_CACHE_TTL_SECONDS = 2.0
+
+_settings_cache: tuple[float, dict] | None = None
+_non_agent_model_cache: tuple[float, tuple[str, str]] | None = None
+
+
+def _cache_valid(cached: tuple[float, object] | None) -> bool:
+    if cached is None:
+        return False
+    return (time.monotonic() - cached[0]) < SETTINGS_CACHE_TTL_SECONDS
+
+
+def invalidate_settings_cache() -> None:
+    global _settings_cache
+    global _non_agent_model_cache
+    _settings_cache = None
+    _non_agent_model_cache = None
 
 
 def get_settings_from_db():
+    global _settings_cache
+    if _cache_valid(_settings_cache):
+        return _settings_cache[1]
+
     db: Session = SessionLocal()
     settings = db.query(GlobalSettings).first()
     db.close()
     if settings:
-        return {
+        payload = {
             "OPENAI_API_KEY": settings.openai_api_key or os.environ.get("OPENAI_API_KEY"),
             "ANTHROPIC_API_KEY": settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY"),
             "GEMINI_API_KEY": settings.google_api_key or os.environ.get("GEMINI_API_KEY"),
@@ -25,7 +47,11 @@ def get_settings_from_db():
             "NON_AGENT_PROVIDER": settings.non_agent_provider or os.environ.get("NON_AGENT_PROVIDER"),
             "NON_AGENT_MODEL": settings.non_agent_model or os.environ.get("NON_AGENT_MODEL"),
         }
-    return {"OLLAMA_BASE_URL": DEFAULT_OLLAMA_URL}
+    else:
+        payload = {"OLLAMA_BASE_URL": DEFAULT_OLLAMA_URL}
+
+    _settings_cache = (time.monotonic(), payload)
+    return payload
 
 
 def get_non_agent_model_config() -> tuple[str, str]:
@@ -38,24 +64,36 @@ def get_non_agent_model_config() -> tuple[str, str]:
     3) First configured arena agent model
     4) Local-safe default (ollama/llama3.2:3b)
     """
+    global _non_agent_model_cache
+    if _cache_valid(_non_agent_model_cache):
+        return _non_agent_model_cache[1]
+
     db: Session = SessionLocal()
     try:
         settings = db.query(GlobalSettings).first()
         if settings and settings.non_agent_provider and settings.non_agent_model:
-            return settings.non_agent_provider, settings.non_agent_model
+            config = (settings.non_agent_provider, settings.non_agent_model)
+            _non_agent_model_cache = (time.monotonic(), config)
+            return config
 
         env_provider = os.environ.get("NON_AGENT_PROVIDER")
         env_model = os.environ.get("NON_AGENT_MODEL")
         if env_provider and env_model:
-            return env_provider, env_model
+            config = (env_provider, env_model)
+            _non_agent_model_cache = (time.monotonic(), config)
+            return config
 
         first_agent = db.query(Agent).order_by(Agent.sort_order.asc(), Agent.id.asc()).first()
         if first_agent and first_agent.provider and first_agent.model:
-            return first_agent.provider, first_agent.model
+            config = (first_agent.provider, first_agent.model)
+            _non_agent_model_cache = (time.monotonic(), config)
+            return config
     finally:
         db.close()
 
-    return "ollama", "llama3.2:3b"
+    config = ("ollama", "llama3.2:3b")
+    _non_agent_model_cache = (time.monotonic(), config)
+    return config
 
 
 def get_llm(provider: str, model_name: str, temperature: float = 0.7):

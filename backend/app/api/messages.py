@@ -19,15 +19,15 @@ def list_messages(room_id: int, limit: int = 200, db: Session = Depends(get_db))
     room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    msgs = (
+    newest_msgs = (
         db.query(schema.Message)
         .options(joinedload(schema.Message.agent))
         .filter(schema.Message.room_id == room_id)
-        .order_by(schema.Message.timestamp.asc())
+        .order_by(schema.Message.timestamp.desc(), schema.Message.id.desc())
         .limit(limit)
         .all()
     )
-    return msgs
+    return list(reversed(newest_msgs))
 
 
 @router.get("/export", response_class=PlainTextResponse)

@@ -10,8 +10,6 @@ from ...core.llm import get_llm, get_non_agent_model_config
 
 logger = logging.getLogger(__name__)
 
-# Turns replenished to each agent's budget when the user sends a message
-BUDGET_REPLENISH_AMOUNT = 3
 # Minimum score (0-10) for an agent to participate in a turn
 PARTICIPATION_THRESHOLD = 3.0
 
@@ -227,7 +225,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
 
     # --- Emergency Stop ---
     if state.get("emergency_stop", False):
-        for name in agent_statuses: agent_statuses[name] = "Idle"
+        for name in agent_statuses:
+            agent_statuses[name] = "Idle"
         return {
             "next_speakers": [],
             "agent_budgets": agent_budgets,
@@ -238,7 +237,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
 
     # --- Interruption ---
     if state.get("interrupted", False):
-        for name in agent_statuses: agent_statuses[name] = "Idle"
+        for name in agent_statuses:
+            agent_statuses[name] = "Idle"
         return {
             "next_speakers": [],
             "interrupted": False,
@@ -258,10 +258,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
     if last_msg.type == "human":
         # Replenish budgets when last message is from human
         for agent in active_agents:
-            agent_budgets[agent["name"]] = min(
-                agent_budgets.get(agent["name"], 0) + BUDGET_REPLENISH_AMOUNT,
-                agent["token_budget"]
-            )
+            agent_budgets[agent["name"]] = agent["token_budget"]
 
         # Handle @Mention Override
         mentions = state.get("mentions", [])

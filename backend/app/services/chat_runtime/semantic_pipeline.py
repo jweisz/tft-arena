@@ -14,6 +14,9 @@ from ...models import schema
 from .inference import compute_tokens_per_second, ordered_processes, set_process_runtime
 
 
+_semantic_tasks: dict[int, asyncio.Task[None]] = {}
+
+
 def load_semantic_messages(db: Session, room_id: int, limit: int = 12):
     messages = (
         db.query(schema.Message)
@@ -90,4 +93,16 @@ async def schedule_semantic_update(
     inference_processes: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     semantic_messages = load_semantic_messages(db, room_id)
-    asyncio.create_task(send_semantic_update(room_id, semantic_messages, inference_processes=inference_processes))
+    existing = _semantic_tasks.get(room_id)
+    if existing and not existing.done():
+        existing.cancel()
+
+    task = asyncio.create_task(send_semantic_update(room_id, semantic_messages, inference_processes=inference_processes))
+    _semantic_tasks[room_id] = task
+
+    def _cleanup(done_task: asyncio.Task[None]) -> None:
+        current = _semantic_tasks.get(room_id)
+        if current is done_task:
+            _semantic_tasks.pop(room_id, None)
+
+    task.add_done_callback(_cleanup)

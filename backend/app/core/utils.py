@@ -11,8 +11,8 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
     # Case insensitive, matching at the start of the string or inside a leading quote.
     prefix_patterns = [
         rf"^\s*[\"']?{re.escape(agent_name)}\s*[:\-—]\s*[\"']?",
-        rf"^\s*[\"']?Agent\s*[:\-—]\s*[\"']?",
-        rf"^\s*[\"']?Response\s*[:\-—]\s*[\"']?",
+        r"^\s*[\"']?Agent\s*[:\-—]\s*[\"']?",
+        r"^\s*[\"']?Response\s*[:\-—]\s*[\"']?",
         r"^\s*[\"']?Assistant\s*[:\-—]\s*[\"']?",
         r"^\s*[\"']?AI\s*[:\-—]\s*[\"']?",
     ]

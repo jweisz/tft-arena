@@ -64,7 +64,7 @@ def test_rooms_crud_and_agent_auto_association(client, db_session):
 
 def test_room_agent_toggle_and_bulk_active(client, db_session):
     agent_a = _create_agent(db_session, name="Analyst")
-    agent_b = _create_agent(db_session, name="Critic")
+    _create_agent(db_session, name="Critic")
     room = _create_room(db_session)
 
     toggle_response = client.post(f"/api/rooms/{room.id}/agents/{agent_a.id}/toggle")
@@ -128,7 +128,14 @@ def test_settings_partial_update_and_readback(client):
     assert updated_payload["non_agent_model"] == "llama3"
 
 
-def test_agents_crud_and_duplicate_name_rejection(client):
+def test_agents_crud_and_duplicate_name_rejection(client, monkeypatch):
+    deleted_agent_names: list[str] = []
+
+    async def _fake_delete_agent_memories(agent_name: str):
+        deleted_agent_names.append(agent_name)
+
+    monkeypatch.setattr("app.agents.memory.delete_agent_memories", _fake_delete_agent_memories)
+
     create_response = client.post(
         "/api/agents/",
         json={
@@ -182,6 +189,7 @@ def test_agents_crud_and_duplicate_name_rejection(client):
     delete_response = client.delete(f"/api/agents/{created['id']}")
     assert delete_response.status_code == 200
     assert client.get("/api/agents/").json() == []
+    assert deleted_agent_names == ["Planner Prime"]
 
 
 def test_agents_reorder_updates_management_and_room_roster_order(client, db_session):
@@ -230,6 +238,19 @@ def test_messages_list_and_export(client, db_session):
     assert "*(interrupted)*" in markdown
 
 
+def test_messages_list_returns_most_recent_window(client, db_session):
+    room = _create_room(db_session, name="Window Room")
+
+    for idx in range(1, 6):
+        db_session.add(schema.Message(room_id=room.id, role="human", content=f"msg-{idx}"))
+    db_session.commit()
+
+    list_response = client.get(f"/api/rooms/{room.id}/messages/?limit=3")
+    assert list_response.status_code == 200
+    messages = list_response.json()
+    assert [message["content"] for message in messages] == ["msg-3", "msg-4", "msg-5"]
+
+
 def test_control_routes_toggle_room_flags(client):
     stop_response = client.post("/api/rooms/5/emergency-stop")
     assert stop_response.status_code == 200
@@ -238,6 +259,23 @@ def test_control_routes_toggle_room_flags(client):
     resume_response = client.post("/api/rooms/5/resume")
     assert resume_response.status_code == 200
     assert resume_response.json() == {"status": "resumed", "room_id": 5}
+
+
+def test_control_routes_persist_room_control_state(client, db_session):
+    room = _create_room(db_session, name="Control Room")
+
+    stop_response = client.post(f"/api/rooms/{room.id}/emergency-stop")
+    assert stop_response.status_code == 200
+
+    state = db_session.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room.id).first()
+    assert state is not None
+    assert state.emergency_stop is True
+
+    resume_response = client.post(f"/api/rooms/{room.id}/resume")
+    assert resume_response.status_code == 200
+
+    db_session.refresh(state)
+    assert state.emergency_stop is False
 
 
 def test_avatar_routes_return_svg_without_external_services(client):
