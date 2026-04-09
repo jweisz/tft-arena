@@ -153,6 +153,10 @@ async def websocket_endpoint(
 
             except asyncio.CancelledError:
                 await manager.send_json_to_room({"type": "interrupted"}, room_id)
+                for proc in inference_processes.values():
+                    proc["active"] = False
+                    proc["tokens_per_sec"] = None
+                await broadcast_inference_status(room_id, inference_processes)
             except Exception as exc:
                 await manager.send_json_to_room({"type": "error", "error": str(exc)}, room_id)
             finally:
