@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import {
   isAuthenticated,
@@ -6,6 +7,8 @@ import {
 } from "./lib/auth";
 import { useAudioStore } from "./store/audioStore";
 import { useBgMusic } from "./hooks/useBgMusic";
+import { useGameStore } from "./store/gameStore";
+import { gauntlet } from "./lib/api";
 import AudioControls from "./components/AudioControls";
 import IdeaEntryScreen from "./screens/IdeaEntryScreen";
 import ChallengerSelectScreen from "./screens/ChallengerSelectScreen";
@@ -16,7 +19,22 @@ import SummaryScreen from "./screens/SummaryScreen";
 
 function AudioManager() {
   const musicEnabled = useAudioStore((s) => s.musicEnabled);
-  useBgMusic(musicEnabled);
+  const trackId = useAudioStore((s) => s.trackId);
+  useBgMusic(musicEnabled, trackId);
+  return null;
+}
+
+function SessionRestorer() {
+  const { session, setSession } = useGameStore();
+  useEffect(() => {
+    if (session) return;
+    const savedId = localStorage.getItem("gauntlet_session_id");
+    if (!savedId) return;
+    gauntlet
+      .getSession(Number(savedId))
+      .then(setSession)
+      .catch(() => localStorage.removeItem("gauntlet_session_id"));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
@@ -32,6 +50,7 @@ export default function App() {
     <BrowserRouter>
       <AuthGate>
         <AudioManager />
+        <SessionRestorer />
         <AudioControls />
         <Routes>
           <Route path="/" element={<IdeaEntryScreen />} />

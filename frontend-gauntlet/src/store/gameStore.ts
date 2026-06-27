@@ -53,15 +53,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingIdea: (idea) => set({ pendingIdea: idea }),
 
   session: null,
-  setSession: (s) => set({ session: s }),
-  clearSession: () =>
+  setSession: (s) => {
+    localStorage.setItem("gauntlet_session_id", String(s.id));
+    set({ session: s });
+  },
+  clearSession: () => {
+    localStorage.removeItem("gauntlet_session_id");
     set({
       session: null,
       activeBossId: null,
       liveHp: {},
       pendingMessages: {},
       pendingIdea: "",
-    }),
+    });
+  },
 
   activeBossId: null,
   setActiveBossId: (id) => set({ activeBossId: id }),

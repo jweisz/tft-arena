@@ -77,7 +77,7 @@ def _subscores_to_damage(ev: int, lo: int, en: int, no: int) -> int:
 
 
 def _format_reason(synthesis: str, ev: int, lo: int, en: int, no: int) -> str:
-    return f"{synthesis}\n(Ev: {ev}, L: {lo}, En: {en}, N: {no})"
+    return f"{synthesis}\n(Evidence: {ev}, Logic: {lo}, Engagement: {en}, Novelty: {no})"
 
 
 async def score_exchange(
