@@ -1,71 +1,71 @@
 [tools]
 # No language version pinning needed — uses system Python + Node
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # mise tasks — run with: mise run <task>
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 
-# ── Local dev (no Docker) ─────────────────────
+# ── Start ─────────────────────────────────────────────────────
 
-[tasks.install]
-description = "Install all backend and frontend dependencies"
+[tasks.tft]
+description = "Local: backend + TFT frontend-arena in a tmux split (run 'mise run install' first)"
 run = """
-uv sync --extra dev --project backend
-npm install --prefix frontend
+tmux kill-session -t tft 2>/dev/null || true
+tmux new-session -d -s tft -c "$PWD"
+tmux send-keys -t tft 'cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000' Enter
+tmux split-window -h -t tft -c "$PWD"
+tmux send-keys -t tft 'cd frontend-arena && npm run dev' Enter
+exec tmux attach-session -t tft
 """
 
-[tasks.app-backend]
-description = "Start the FastAPI backend locally (hot-reload)"
-dir = "backend"
-run = "uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+[tasks.tft-docker]
+description = "Docker: backend + TFT frontend-arena (compose watch with file sync)"
+run = "docker compose --profile tft watch"
 
-[tasks.app-frontend]
-description = "Start the Vite dev server locally"
-dir = "frontend"
-run = "npm run dev"
+[tasks.gauntlet]
+description = "Local: backend + Gauntlet frontend in a tmux split (run 'mise run install' first)"
+run = """
+tmux kill-session -t gauntlet 2>/dev/null || true
+tmux new-session -d -s gauntlet -c "$PWD"
+tmux send-keys -t gauntlet 'cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000' Enter
+tmux split-window -h -t gauntlet -c "$PWD"
+tmux send-keys -t gauntlet 'cd frontend-gauntlet && npm run dev' Enter
+exec tmux attach-session -t gauntlet
+"""
 
-[tasks.app]
-description = "Install deps then start backend + frontend locally (runs both in parallel)"
-depends = ["install", "app-backend", "app-frontend"]
-run = "echo 'Both servers started.'"
+[tasks.gauntlet-docker]
+description = "Docker: backend + Gauntlet frontend (compose watch with file sync)"
+run = "docker compose --profile gauntlet watch"
 
-# ── Docker ────────────────────────────────────
+# ── Setup ─────────────────────────────────────────────────────
 
-[tasks.docker-up]
-description = "Start all services in Docker with hot-reload (compose watch)"
-run = "docker compose watch"
+[tasks.install]
+description = "Install all dependencies (backend + both frontend-arenas)"
+run = """
+uv sync --extra dev --project backend
+npm install --prefix frontend-arena
+npm install --prefix frontend-gauntlet
+"""
 
-[tasks.docker-down]
-description = "Stop and remove all Docker containers"
-run = "docker compose down"
-
-# ── Lint & Format ────────────────────────────
-
-[tasks.lint-frontend]
-description = "Run ESLint on the frontend"
-dir = "frontend"
-run = "npm run lint"
-
-[tasks.format-frontend]
-description = "Run Prettier on the frontend"
-dir = "frontend"
-run = "npm run format"
-
-[tasks.lint-backend]
-description = "Run Ruff linter on the backend"
-dir = "backend"
-run = "uv run ruff check ."
-
-[tasks.format-backend]
-description = "Run Ruff formatter on the backend"
-dir = "backend"
-run = "uv run ruff format ."
+# ── Lint & Format ─────────────────────────────────────────────
 
 [tasks.lint]
-description = "Lint both frontend and backend"
-depends = ["lint-frontend", "lint-backend"]
+description = "Lint backend (ruff) and both frontend-arenas (eslint)"
+run = """
+uv run ruff check . --project backend
+npm run lint --prefix frontend-arena
+npm run lint --prefix frontend-gauntlet
+"""
 
-# ── Tests ─────────────────────────────────────
+[tasks.format]
+description = "Format backend (ruff) and both frontend-arenas (prettier)"
+run = """
+uv run ruff format . --project backend
+npm run format --prefix frontend-arena
+npm run format --prefix frontend-gauntlet
+"""
+
+# ── Test ──────────────────────────────────────────────────────
 
 [tasks.test]
 description = "Run the backend Python test suite"

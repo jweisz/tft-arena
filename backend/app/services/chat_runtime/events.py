@@ -20,11 +20,16 @@ def _estimate_chunk_tokens(raw_chunk: str) -> int:
     return max(1, len(re.findall(r"[A-Za-z0-9']+", raw_chunk)))
 
 
-async def broadcast_inference_status(room_id: int, processes: dict[str, dict[str, Any]]) -> None:
-    await manager.send_json_to_room({
-        "type": "inference_status",
-        "processes": ordered_processes(processes),
-    }, room_id)
+async def broadcast_inference_status(
+    room_id: int, processes: dict[str, dict[str, Any]]
+) -> None:
+    await manager.send_json_to_room(
+        {
+            "type": "inference_status",
+            "processes": ordered_processes(processes),
+        },
+        room_id,
+    )
 
 
 async def broadcast_turn_completion(
@@ -34,16 +39,22 @@ async def broadcast_turn_completion(
     agent_budgets: dict[str, int],
 ) -> None:
     if telemetry:
-        await manager.send_json_to_room({
-            "type": "telemetry",
-            "data": telemetry,
-            "budgets": agent_budgets,
-        }, room_id)
+        await manager.send_json_to_room(
+            {
+                "type": "telemetry",
+                "data": telemetry,
+                "budgets": agent_budgets,
+            },
+            room_id,
+        )
 
-        await manager.send_json_to_room({
-            "type": "activity_stats",
-            "stats": get_activity_stats(room_id, db),
-        }, room_id)
+        await manager.send_json_to_room(
+            {
+                "type": "activity_stats",
+                "stats": get_activity_stats(room_id, db),
+            },
+            room_id,
+        )
 
     await manager.send_json_to_room({"type": "done"}, room_id)
 
@@ -63,20 +74,31 @@ async def handle_graph_event(
     node_name = event.get("name", "")
 
     if kind in ("on_node_start", "on_chain_start") and node_name == "router":
-        set_process_runtime(inference_processes, "router", active=True, tokens_per_sec=None)
+        set_process_runtime(
+            inference_processes, "router", active=True, tokens_per_sec=None
+        )
         await broadcast_inference_status(room_id, inference_processes)
         statuses: dict[str, str] = {}
         for agent in initial_state["active_agents"]:
-            remaining_budget = agent_budgets.get(agent["name"], agent.get("token_budget", 0))
+            remaining_budget = agent_budgets.get(
+                agent["name"], agent.get("token_budget", 0)
+            )
             statuses[agent["name"]] = "Thinking" if remaining_budget > 0 else "Idle"
-        await manager.send_json_to_room({
-            "type": "status_update",
-            "statuses": statuses,
-        }, room_id)
+        await manager.send_json_to_room(
+            {
+                "type": "status_update",
+                "statuses": statuses,
+            },
+            room_id,
+        )
         return []
 
-    if kind in ("on_node_start", "on_chain_start") and node_name.startswith("agent_node"):
-        agent_name = event.get("data", {}).get("input", {}).get("current_agent", {}).get("name")
+    if kind in ("on_node_start", "on_chain_start") and node_name.startswith(
+        "agent_node"
+    ):
+        agent_name = (
+            event.get("data", {}).get("input", {}).get("current_agent", {}).get("name")
+        )
         if agent_name:
             # Agent nodes can be scheduled concurrently, but speaking is serialized by a room lock.
             # Only mark one agent as active during warm-up to avoid UI showing the wrong speaker.
@@ -85,7 +107,12 @@ async def handle_graph_event(
                 for p in inference_processes.values()
             )
             if not active_agent_exists:
-                set_process_runtime(inference_processes, f"agent:{agent_name}", active=True, tokens_per_sec=None)
+                set_process_runtime(
+                    inference_processes,
+                    f"agent:{agent_name}",
+                    active=True,
+                    tokens_per_sec=None,
+                )
                 await broadcast_inference_status(room_id, inference_processes)
         return []
 
@@ -106,18 +133,26 @@ async def handle_graph_event(
                 ),
             )
             await broadcast_inference_status(room_id, inference_processes)
-            await manager.send_json_to_room({
-                "type": "status_update",
-                "statuses": final_output["agent_statuses"],
-                "scores": final_output.get("agent_scores", {}),
-                "reasons": final_output.get("agent_reasons", {}),
-                "emojis": {agent["name"]: agent["emoji"] for agent in active_agents},
-            }, room_id)
+            await manager.send_json_to_room(
+                {
+                    "type": "status_update",
+                    "statuses": final_output["agent_statuses"],
+                    "scores": final_output.get("agent_scores", {}),
+                    "reasons": final_output.get("agent_reasons", {}),
+                    "emojis": {
+                        agent["name"]: agent["emoji"] for agent in active_agents
+                    },
+                },
+                room_id,
+            )
             if refreshed_budgets:
-                await manager.send_json_to_room({
-                    "type": "budget_update",
-                    "budgets": refreshed_budgets,
-                }, room_id)
+                await manager.send_json_to_room(
+                    {
+                        "type": "budget_update",
+                        "budgets": refreshed_budgets,
+                    },
+                    room_id,
+                )
             return []
 
         if node_name.startswith("agent_node") and final_output:
@@ -136,12 +171,17 @@ async def handle_graph_event(
                     ),
                 )
                 stream_runtime.pop(process_id, None)
-                final_content = sanitize_agent_content(agent_outputs.get(agent_name, ""), agent_name)
-                await manager.send_json_to_room({
-                    "type": "agent_message_done",
-                    "agent": agent_name,
-                    "content": final_content,
-                }, room_id)
+                final_content = sanitize_agent_content(
+                    agent_outputs.get(agent_name, ""), agent_name
+                )
+                await manager.send_json_to_room(
+                    {
+                        "type": "agent_message_done",
+                        "agent": agent_name,
+                        "content": final_content,
+                    },
+                    room_id,
+                )
             await broadcast_inference_status(room_id, inference_processes)
             persist_agent_messages(db, room_id, telemetry, agent_outputs)
             return telemetry
@@ -160,11 +200,14 @@ async def handle_graph_event(
             return []
 
         process_id = f"agent:{agent_name}"
-        runtime_state = stream_runtime.setdefault(process_id, {
-            "start_time": time.perf_counter(),
-            "tokens": 0.0,
-            "last_emit": 0.0,
-        })
+        runtime_state = stream_runtime.setdefault(
+            process_id,
+            {
+                "start_time": time.perf_counter(),
+                "tokens": 0.0,
+                "last_emit": 0.0,
+            },
+        )
         runtime_state["tokens"] += _estimate_chunk_tokens(token)
 
         elapsed = time.perf_counter() - runtime_state["start_time"]
@@ -174,22 +217,30 @@ async def handle_graph_event(
         if now - runtime_state["last_emit"] >= 0.2:
             # The currently streaming agent should be the only active agent process.
             for candidate_process_id, process in inference_processes.items():
-                if process.get("process_kind") == "agent" and candidate_process_id != process_id:
+                if (
+                    process.get("process_kind") == "agent"
+                    and candidate_process_id != process_id
+                ):
                     set_process_runtime(
                         inference_processes,
                         candidate_process_id,
                         active=False,
                         tokens_per_sec=process.get("tokens_per_sec"),
                     )
-            set_process_runtime(inference_processes, process_id, active=True, tokens_per_sec=tps)
+            set_process_runtime(
+                inference_processes, process_id, active=True, tokens_per_sec=tps
+            )
             await broadcast_inference_status(room_id, inference_processes)
             runtime_state["last_emit"] = now
 
         agent_outputs[agent_name] = agent_outputs.get(agent_name, "") + token
-        await manager.send_json_to_room({
-            "type": "token",
-            "agent": agent_name,
-            "token": token,
-        }, room_id)
+        await manager.send_json_to_room(
+            {
+                "type": "token",
+                "agent": agent_name,
+                "token": token,
+            },
+            room_id,
+        )
 
     return []

@@ -12,6 +12,7 @@ from ...core.utils import sanitize_agent_content
 
 logger = logging.getLogger(__name__)
 
+
 async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes a single agent's inference with sequential speaking enforcement.
@@ -37,7 +38,9 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         # Prepare context and prompt outside the speaking lock.
-        evicted_messages, memories_prefix, profile_prefix = await _prepare_context(messages, agent, room_id)
+        evicted_messages, memories_prefix, profile_prefix = await _prepare_context(
+            messages, agent, room_id
+        )
 
         global_instr = state.get("global_instruction", "")
         system_parts = []
@@ -70,22 +73,22 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
         # Check if another agent is already speaking
         if room_lock.locked():
-            await manager.send_json_to_room({
-                "type": "status_update",
-                "statuses": {agent["name"]: "Queued"}
-            }, room_id)
+            await manager.send_json_to_room(
+                {"type": "status_update", "statuses": {agent["name"]: "Queued"}},
+                room_id,
+            )
 
         async with room_lock:
             # Acquire speaking status
-            await manager.send_json_to_room({
-                "type": "status_update",
-                "statuses": {agent["name"]: "Speaking"}
-            }, room_id)
+            await manager.send_json_to_room(
+                {"type": "status_update", "statuses": {agent["name"]: "Speaking"}},
+                room_id,
+            )
 
             start = time.perf_counter()
             response = await llm.ainvoke(
                 [system_msg] + evicted_messages,
-                config={"metadata": {"agent_name": agent["name"]}}
+                config={"metadata": {"agent_name": agent["name"]}},
             )
             elapsed_ms = (time.perf_counter() - start) * 1000
 
@@ -102,10 +105,9 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         return {}
     finally:
         # Reset live status to Idle (UI)
-        await manager.send_json_to_room({
-            "type": "status_update",
-            "statuses": {agent["name"]: "Idle"}
-        }, room_id)
+        await manager.send_json_to_room(
+            {"type": "status_update", "statuses": {agent["name"]: "Idle"}}, room_id
+        )
 
     # --- BELOW TASKS RUN OUTSIDE THE ROOM LOCK TO AVOID HANGS ---
     try:
@@ -117,10 +119,9 @@ async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         new_budgets = {**agent_budgets, agent["name"]: max(0, current_budget - 1)}
 
         # Broadcast budget update immediately
-        await manager.send_json_to_room({
-            "type": "budget_update",
-            "budgets": new_budgets
-        }, room_id)
+        await manager.send_json_to_room(
+            {"type": "budget_update", "budgets": new_budgets}, room_id
+        )
 
         ai_msg = AIMessage(content=clean_content, name=agent["name"])
 

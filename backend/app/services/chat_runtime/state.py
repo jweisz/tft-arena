@@ -23,7 +23,11 @@ def _load_recent_messages(db: Session, room_id: int, limit: int = 20):
         if row.role == "human":
             history.append(HumanMessage(content=row.content))
         elif row.role == "agent":
-            history.append(AIMessage(content=row.content, name=row.agent.name if row.agent else "agent"))
+            history.append(
+                AIMessage(
+                    content=row.content, name=row.agent.name if row.agent else "agent"
+                )
+            )
         elif row.role == "system":
             history.append(SystemMessage(content=row.content))
     return history
@@ -42,7 +46,10 @@ def build_initial_state(
     history = _load_recent_messages(db, room_id)
     if not history:
         history = [HumanMessage(content=user_text)]
-    elif getattr(history[-1], "type", None) != "human" or str(history[-1].content) != user_text:
+    elif (
+        getattr(history[-1], "type", None) != "human"
+        or str(history[-1].content) != user_text
+    ):
         history.append(HumanMessage(content=user_text))
 
     state = {

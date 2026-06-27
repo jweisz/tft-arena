@@ -19,15 +19,60 @@ class RoutePolicy:
 
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
-    RoutePolicy(path_prefix="/api/auth", kind="rest", policy=AccessPolicy.PUBLIC, purpose="Login and auth metadata"),
-    RoutePolicy(path_prefix="/api/health", kind="rest", policy=AccessPolicy.PUBLIC, purpose="Service health checks"),
-    RoutePolicy(path_prefix="/api/chat", kind="ws", policy=AccessPolicy.OPTIONAL, purpose="Arena streaming channel"),
-    RoutePolicy(path_prefix="/api/rooms", kind="rest", policy=AccessPolicy.OPTIONAL, purpose="Room and flow controls"),
-    RoutePolicy(path_prefix="/api/settings", kind="rest", policy=AccessPolicy.OPTIONAL, purpose="Local settings management"),
-    RoutePolicy(path_prefix="/api/agents", kind="rest", policy=AccessPolicy.OPTIONAL, purpose="Agent persona CRUD"),
-    RoutePolicy(path_prefix="/api/messages", kind="rest", policy=AccessPolicy.OPTIONAL, purpose="Transcript retrieval/export"),
-    RoutePolicy(path_prefix="/api/providers", kind="rest", policy=AccessPolicy.OPTIONAL, purpose="Model provider discovery"),
-    RoutePolicy(path_prefix="/api/avatars", kind="rest", policy=AccessPolicy.PUBLIC, purpose="Avatar rendering"),
+    RoutePolicy(
+        path_prefix="/api/auth",
+        kind="rest",
+        policy=AccessPolicy.PUBLIC,
+        purpose="Login and auth metadata",
+    ),
+    RoutePolicy(
+        path_prefix="/api/health",
+        kind="rest",
+        policy=AccessPolicy.PUBLIC,
+        purpose="Service health checks",
+    ),
+    RoutePolicy(
+        path_prefix="/api/chat",
+        kind="ws",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Arena streaming channel",
+    ),
+    RoutePolicy(
+        path_prefix="/api/rooms",
+        kind="rest",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Room and flow controls",
+    ),
+    RoutePolicy(
+        path_prefix="/api/settings",
+        kind="rest",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Local settings management",
+    ),
+    RoutePolicy(
+        path_prefix="/api/agents",
+        kind="rest",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Agent persona CRUD",
+    ),
+    RoutePolicy(
+        path_prefix="/api/messages",
+        kind="rest",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Transcript retrieval/export",
+    ),
+    RoutePolicy(
+        path_prefix="/api/providers",
+        kind="rest",
+        policy=AccessPolicy.OPTIONAL,
+        purpose="Model provider discovery",
+    ),
+    RoutePolicy(
+        path_prefix="/api/avatars",
+        kind="rest",
+        policy=AccessPolicy.PUBLIC,
+        purpose="Avatar rendering",
+    ),
 )
 
 

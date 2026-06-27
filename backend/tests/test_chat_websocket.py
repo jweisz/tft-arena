@@ -3,7 +3,9 @@ from collections.abc import AsyncIterator
 from app.models import schema
 
 
-def _collect_events_until(websocket, stop_type: str, max_events: int = 24) -> list[dict]:
+def _collect_events_until(
+    websocket, stop_type: str, max_events: int = 24
+) -> list[dict]:
     events: list[dict] = []
     for _ in range(max_events):
         event = websocket.receive_json()
@@ -14,7 +16,9 @@ def _collect_events_until(websocket, stop_type: str, max_events: int = 24) -> li
 
 
 def _seed_room_with_agent(db_session):
-    settings = schema.GlobalSettings(default_agent_turn_budget=3, global_system_instruction="Be precise.")
+    settings = schema.GlobalSettings(
+        default_agent_turn_budget=3, global_system_instruction="Be precise."
+    )
     agent = schema.Agent(
         name="Analyst",
         role_description="Finds the core issue.",
@@ -34,11 +38,15 @@ def _seed_room_with_agent(db_session):
     return room, agent
 
 
-def test_chat_websocket_streams_token_telemetry_and_semantic_events(client, db_session, monkeypatch):
+def test_chat_websocket_streams_token_telemetry_and_semantic_events(
+    client, db_session, monkeypatch
+):
     room, agent = _seed_room_with_agent(db_session)
 
     class StubGraph:
-        async def astream_events(self, initial_state, version: str) -> AsyncIterator[dict]:
+        async def astream_events(
+            self, initial_state, version: str
+        ) -> AsyncIterator[dict]:
             assert version == "v2"
             assert initial_state["messages"][0].content == "hello arena"
 
@@ -82,14 +90,23 @@ def test_chat_websocket_streams_token_telemetry_and_semantic_events(client, db_s
             }
 
     async def fake_semantic(messages):
-        assert [message.content for message in messages] == ["hello arena", "Hello world"]
+        assert [message.content for message in messages] == [
+            "hello arena",
+            "Hello world",
+        ]
         return {
             "annotations": [{"kind": "fact-check", "value": "clear"}],
-            "scratchpad": {"consensus": "Aligned", "open_questions": [], "key_ideas": ["Hello world"]},
+            "scratchpad": {
+                "consensus": "Aligned",
+                "open_questions": [],
+                "key_ideas": ["Hello world"],
+            },
         }
 
     monkeypatch.setattr("app.api.chat.graph", StubGraph())
-    monkeypatch.setattr("app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic)
+    monkeypatch.setattr(
+        "app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic
+    )
 
     with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
         first_event = websocket.receive_json()
@@ -97,7 +114,9 @@ def test_chat_websocket_streams_token_telemetry_and_semantic_events(client, db_s
 
         second_event = websocket.receive_json()
         assert second_event["type"] == "inference_status"
-        assert any(process["process_id"] == "router" for process in second_event["processes"])
+        assert any(
+            process["process_id"] == "router" for process in second_event["processes"]
+        )
 
         websocket.send_text('{"text":"hello arena","mentions":[]}')
 
@@ -120,17 +139,26 @@ def test_chat_websocket_streams_token_telemetry_and_semantic_events(client, db_s
     semantic_event = next(event for event in received if event["type"] == "semantic")
     assert semantic_event["scratchpad"]["key_ideas"] == ["Hello world"]
 
-    stored_messages = db_session.query(schema.Message).filter(schema.Message.room_id == room.id).order_by(schema.Message.id.asc()).all()
+    stored_messages = (
+        db_session.query(schema.Message)
+        .filter(schema.Message.room_id == room.id)
+        .order_by(schema.Message.id.asc())
+        .all()
+    )
     assert [message.role for message in stored_messages] == ["human", "agent"]
     assert stored_messages[0].content == "hello arena"
     assert stored_messages[1].content == "Hello world"
 
 
-def test_chat_websocket_emits_agent_message_done_for_repeated_agent_turns(client, db_session, monkeypatch):
+def test_chat_websocket_emits_agent_message_done_for_repeated_agent_turns(
+    client, db_session, monkeypatch
+):
     room, agent = _seed_room_with_agent(db_session)
 
     class StubGraph:
-        async def astream_events(self, initial_state, version: str) -> AsyncIterator[dict]:
+        async def astream_events(
+            self, initial_state, version: str
+        ) -> AsyncIterator[dict]:
             assert version == "v2"
 
             yield {
@@ -181,10 +209,15 @@ def test_chat_websocket_emits_agent_message_done_for_repeated_agent_turns(client
             }
 
     async def fake_semantic(_messages):
-        return {"annotations": [], "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []}}
+        return {
+            "annotations": [],
+            "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []},
+        }
 
     monkeypatch.setattr("app.api.chat.graph", StubGraph())
-    monkeypatch.setattr("app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic)
+    monkeypatch.setattr(
+        "app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic
+    )
 
     with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
         assert websocket.receive_json() == {"type": "activity_stats", "stats": {}}
@@ -194,10 +227,20 @@ def test_chat_websocket_emits_agent_message_done_for_repeated_agent_turns(client
 
     done_events = [event for event in received if event["type"] == "agent_message_done"]
     assert [event["agent"] for event in done_events] == [agent.name, agent.name]
-    assert [event.get("content") for event in done_events] == ["First reply", "Second reply"]
+    assert [event.get("content") for event in done_events] == [
+        "First reply",
+        "Second reply",
+    ]
 
-    stored_messages = db_session.query(schema.Message).filter(schema.Message.room_id == room.id).order_by(schema.Message.id.asc()).all()
-    assert [message.content for message in stored_messages if message.role == "agent"] == ["First reply", "Second reply"]
+    stored_messages = (
+        db_session.query(schema.Message)
+        .filter(schema.Message.room_id == room.id)
+        .order_by(schema.Message.id.asc())
+        .all()
+    )
+    assert [
+        message.content for message in stored_messages if message.role == "agent"
+    ] == ["First reply", "Second reply"]
 
 
 def test_chat_websocket_ignores_blank_messages(client, db_session, monkeypatch):
@@ -215,14 +258,23 @@ def test_chat_websocket_ignores_blank_messages(client, db_session, monkeypatch):
 
         websocket.send_text('{"text":"   ","mentions":[]}')
 
-    assert db_session.query(schema.Message).filter(schema.Message.room_id == room.id).count() == 0
+    assert (
+        db_session.query(schema.Message)
+        .filter(schema.Message.room_id == room.id)
+        .count()
+        == 0
+    )
 
 
-def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session, monkeypatch):
+def test_chat_websocket_ignores_internal_router_stream_chunks(
+    client, db_session, monkeypatch
+):
     room, agent = _seed_room_with_agent(db_session)
 
     class StubGraph:
-        async def astream_events(self, initial_state, version: str) -> AsyncIterator[dict]:
+        async def astream_events(
+            self, initial_state, version: str
+        ) -> AsyncIterator[dict]:
             assert version == "v2"
 
             # Internal model stream with no agent_name metadata should be hidden.
@@ -230,7 +282,11 @@ def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session
                 "event": "on_chat_model_stream",
                 "name": "router",
                 "metadata": {"langgraph_node": "router"},
-                "data": {"chunk": type("Chunk", (), {"content": "{\"scores\": {\"Analyst\": 9}}"})()},
+                "data": {
+                    "chunk": type(
+                        "Chunk", (), {"content": '{"scores": {"Analyst": 9}}'}
+                    )()
+                },
             }
             yield {
                 "event": "on_chat_model_stream",
@@ -257,10 +313,15 @@ def test_chat_websocket_ignores_internal_router_stream_chunks(client, db_session
             }
 
     async def fake_semantic(_messages):
-        return {"annotations": [], "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []}}
+        return {
+            "annotations": [],
+            "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []},
+        }
 
     monkeypatch.setattr("app.api.chat.graph", StubGraph())
-    monkeypatch.setattr("app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic)
+    monkeypatch.setattr(
+        "app.services.chat_runtime.semantic_pipeline.run_semantic_agent", fake_semantic
+    )
 
     with client.websocket_connect(f"/api/chat/{room.id}/stream") as websocket:
         assert websocket.receive_json() == {"type": "activity_stats", "stats": {}}

@@ -14,7 +14,9 @@ from app.models.db import Base, get_db
 @pytest.fixture
 def db_session(tmp_path) -> Generator[Session, None, None]:
     database_path = tmp_path / "test.db"
-    engine = create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{database_path}", connect_args={"check_same_thread": False}
+    )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     Base.metadata.create_all(bind=engine)

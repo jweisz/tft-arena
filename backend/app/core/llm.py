@@ -40,12 +40,17 @@ def get_settings_from_db():
     db.close()
     if settings:
         payload = {
-            "OPENAI_API_KEY": settings.openai_api_key or os.environ.get("OPENAI_API_KEY"),
-            "ANTHROPIC_API_KEY": settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY"),
-            "GEMINI_API_KEY": settings.google_api_key or os.environ.get("GEMINI_API_KEY"),
+            "OPENAI_API_KEY": settings.openai_api_key
+            or os.environ.get("OPENAI_API_KEY"),
+            "ANTHROPIC_API_KEY": settings.anthropic_api_key
+            or os.environ.get("ANTHROPIC_API_KEY"),
+            "GEMINI_API_KEY": settings.google_api_key
+            or os.environ.get("GEMINI_API_KEY"),
             "OLLAMA_BASE_URL": settings.ollama_base_url or DEFAULT_OLLAMA_URL,
-            "NON_AGENT_PROVIDER": settings.non_agent_provider or os.environ.get("NON_AGENT_PROVIDER"),
-            "NON_AGENT_MODEL": settings.non_agent_model or os.environ.get("NON_AGENT_MODEL"),
+            "NON_AGENT_PROVIDER": settings.non_agent_provider
+            or os.environ.get("NON_AGENT_PROVIDER"),
+            "NON_AGENT_MODEL": settings.non_agent_model
+            or os.environ.get("NON_AGENT_MODEL"),
         }
     else:
         payload = {"OLLAMA_BASE_URL": DEFAULT_OLLAMA_URL}
@@ -83,7 +88,9 @@ def get_non_agent_model_config() -> tuple[str, str]:
             _non_agent_model_cache = (time.monotonic(), config)
             return config
 
-        first_agent = db.query(Agent).order_by(Agent.sort_order.asc(), Agent.id.asc()).first()
+        first_agent = (
+            db.query(Agent).order_by(Agent.sort_order.asc(), Agent.id.asc()).first()
+        )
         if first_agent and first_agent.provider and first_agent.model:
             config = (first_agent.provider, first_agent.model)
             _non_agent_model_cache = (time.monotonic(), config)

@@ -6,6 +6,7 @@ from ..core.llm import invalidate_settings_cache
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
+
 # Global settings for the single authorized user
 @router.get("/", response_model=dict)
 def get_settings(db: Session = Depends(get_db)):
@@ -23,6 +24,7 @@ def get_settings(db: Session = Depends(get_db)):
         "non_agent_provider": settings.non_agent_provider,
         "non_agent_model": settings.non_agent_model,
     }
+
 
 @router.post("/")
 def update_settings(settings_in: dict, db: Session = Depends(get_db)):

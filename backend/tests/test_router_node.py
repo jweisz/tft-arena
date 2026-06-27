@@ -22,10 +22,18 @@ def test_prompt_loader_exposes_relevance_instructions_for_presets():
 
 
 async def test_router_heuristic_fallback_avoids_first_agent_bias(monkeypatch):
-    monkeypatch.setattr(router_module, "get_llm", lambda provider, model_name, temperature=0: BrokenRouterLLM())
+    monkeypatch.setattr(
+        router_module,
+        "get_llm",
+        lambda provider, model_name, temperature=0: BrokenRouterLLM(),
+    )
 
     state = {
-        "messages": [HumanMessage(content="I need creative directions and naming ideas for this concept.")],
+        "messages": [
+            HumanMessage(
+                content="I need creative directions and naming ideas for this concept."
+            )
+        ],
         "active_agents": [
             {
                 "id": 1,
@@ -68,11 +76,18 @@ async def test_router_heuristic_fallback_avoids_first_agent_bias(monkeypatch):
 
     assert result["next_speakers"] == ["Muse"]
     assert result["agent_scores"]["Muse"] > result["agent_scores"]["Logos Architect"]
-    assert result["agent_scores"]["Logos Architect"] < router_module.PARTICIPATION_THRESHOLD
+    assert (
+        result["agent_scores"]["Logos Architect"]
+        < router_module.PARTICIPATION_THRESHOLD
+    )
 
 
 async def test_router_replenishes_budget_to_agent_cap(monkeypatch):
-    monkeypatch.setattr(router_module, "get_llm", lambda provider, model_name, temperature=0: BrokenRouterLLM())
+    monkeypatch.setattr(
+        router_module,
+        "get_llm",
+        lambda provider, model_name, temperature=0: BrokenRouterLLM(),
+    )
 
     state = {
         "messages": [HumanMessage(content="Need a quick review.")],
@@ -109,7 +124,11 @@ async def test_router_replenishes_budget_to_agent_cap(monkeypatch):
 
 async def test_router_typed_text_mention_hard_targets_agent():
     state = {
-        "messages": [HumanMessage(content="@Devil's Advocate I don't think there IS a way to understand anymore.")],
+        "messages": [
+            HumanMessage(
+                content="@Devil's Advocate I don't think there IS a way to understand anymore."
+            )
+        ],
         "active_agents": [
             {
                 "id": 1,

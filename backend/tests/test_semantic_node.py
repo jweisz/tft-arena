@@ -20,7 +20,7 @@ class StubLLM:
 
 
 async def test_semantic_agent_parses_fenced_json(monkeypatch):
-    payload = '''```json
+    payload = """```json
     {
       "annotations": [{"excerpt": "x", "type": "assumption", "note": "y"}],
       "scratchpad": {
@@ -29,10 +29,18 @@ async def test_semantic_agent_parses_fenced_json(monkeypatch):
         "key_ideas": ["Focus on constraints"]
       }
     }
-    ```'''
+    ```"""
 
-    monkeypatch.setattr(semantic_module, "_build_model_candidates", lambda _p, _m: [("openai", "gpt-4o-mini")])
-    monkeypatch.setattr(semantic_module, "get_llm", lambda provider, model_name, temperature=0.2: StubLLM(content=payload))
+    monkeypatch.setattr(
+        semantic_module,
+        "_build_model_candidates",
+        lambda _p, _m: [("openai", "gpt-4o-mini")],
+    )
+    monkeypatch.setattr(
+        semantic_module,
+        "get_llm",
+        lambda provider, model_name, temperature=0.2: StubLLM(content=payload),
+    )
 
     result = await semantic_module.run_semantic_agent([HumanMessage(content="hello")])
 
@@ -51,7 +59,9 @@ async def test_semantic_agent_falls_back_to_second_candidate(monkeypatch):
     def fake_get_llm(provider, model_name, temperature=0.2):
         if model_name == "bad-model":
             return StubLLM(should_fail=True)
-        return StubLLM(content='{"annotations": [], "scratchpad": {"consensus": "Works", "open_questions": [], "key_ideas": ["Fallback used"]}}')
+        return StubLLM(
+            content='{"annotations": [], "scratchpad": {"consensus": "Works", "open_questions": [], "key_ideas": ["Fallback used"]}}'
+        )
 
     monkeypatch.setattr(semantic_module, "get_llm", fake_get_llm)
 

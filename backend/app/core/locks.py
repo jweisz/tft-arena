@@ -1,6 +1,7 @@
 import asyncio
 from typing import Dict
 
+
 class LockManager:
     def __init__(self):
         self.locks: Dict[int, asyncio.Lock] = {}
@@ -9,5 +10,6 @@ class LockManager:
         if room_id not in self.locks:
             self.locks[room_id] = asyncio.Lock()
         return self.locks[room_id]
+
 
 lock_manager = LockManager()

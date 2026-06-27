@@ -1,5 +1,6 @@
 import re
 
+
 def sanitize_agent_content(content: str, agent_name: str) -> str:
     """
     Strips 'Name:' prefixes and surrounding quotes from the LLM output.
@@ -22,8 +23,9 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
 
     # 2. Strip surrounding bulk quotes if the agent wrapped their whole message in them
     # Handle cases like "Aye, the Colosseum..." -> Aye, the Colosseum...
-    if (sanitized.startswith('"') and sanitized.endswith('"')) or \
-       (sanitized.startswith("'") and sanitized.endswith("'")):
+    if (sanitized.startswith('"') and sanitized.endswith('"')) or (
+        sanitized.startswith("'") and sanitized.endswith("'")
+    ):
         sanitized = sanitized[1:-1].strip()
 
     # 3. Truncate accidental transcript continuations (multi-speaker artifacts).
@@ -34,7 +36,7 @@ def sanitize_agent_content(content: str, agent_name: str) -> str:
     )
     for match in transcript_marker.finditer(sanitized):
         if match.start() > 0:
-            sanitized = sanitized[:match.start()].rstrip()
+            sanitized = sanitized[: match.start()].rstrip()
             break
 
     # 4. Remove trailing markdown header markers left after truncation.

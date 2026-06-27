@@ -7,14 +7,20 @@ from sqlalchemy.orm import Session
 from ...models import schema
 
 
-def load_agents(room: schema.Room | None, db: Session, default_budget: int = 3) -> list[dict[str, Any]]:
+def load_agents(
+    room: schema.Room | None, db: Session, default_budget: int = 3
+) -> list[dict[str, Any]]:
     if not room:
         return []
 
-    active_mappings = db.query(schema.RoomAgent).filter(
-        schema.RoomAgent.room_id == room.id,
-        schema.RoomAgent.is_active,
-    ).all()
+    active_mappings = (
+        db.query(schema.RoomAgent)
+        .filter(
+            schema.RoomAgent.room_id == room.id,
+            schema.RoomAgent.is_active,
+        )
+        .all()
+    )
     active_agent_ids = [mapping.agent_id for mapping in active_mappings]
 
     if not active_agent_ids:
@@ -42,21 +48,31 @@ def load_settings(db: Session) -> tuple[int, str]:
     if not settings:
         return 3, ""
 
-    return settings.default_agent_turn_budget or 3, settings.global_system_instruction or ""
+    return (
+        settings.default_agent_turn_budget or 3,
+        settings.global_system_instruction or "",
+    )
 
 
 def get_activity_stats(room_id: int, db: Session) -> dict[str, int]:
     """Return total message counts per agent for the room."""
     from sqlalchemy import func
 
-    results = db.query(
-        schema.Agent.name,
-        func.count(schema.Message.id),
-    ).join(
-        schema.Message, schema.Agent.id == schema.Message.agent_id,
-    ).filter(
-        schema.Message.room_id == room_id,
-        schema.Message.role == "agent",
-    ).group_by(schema.Agent.name).all()
+    results = (
+        db.query(
+            schema.Agent.name,
+            func.count(schema.Message.id),
+        )
+        .join(
+            schema.Message,
+            schema.Agent.id == schema.Message.agent_id,
+        )
+        .filter(
+            schema.Message.room_id == room_id,
+            schema.Message.role == "agent",
+        )
+        .group_by(schema.Agent.name)
+        .all()
+    )
 
     return {name: count for name, count in results}

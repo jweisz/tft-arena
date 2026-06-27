@@ -1,10 +1,13 @@
 name: tft-arena
 
-# Usage: docker compose watch
-# Auto-syncs file changes into containers:
-#   Backend: Python files -> /app (uvicorn --reload picks them up)
-#   Frontend: src/ and public/ -> /app/... (Vite HMR picks them up)
-#   Both: Rebuild image if dependency manifests/locks change
+# Usage:
+#   docker compose --profile tft watch      → backend + TFT frontend
+#   docker compose --profile gauntlet watch  → backend + Gauntlet frontend
+#
+# File sync keeps running containers up to date:
+#   Backend:  Python files synced → uvicorn --reload picks them up
+#   Frontend: src/ synced → Vite HMR picks them up
+#   Both:     Rebuild image when dependency manifests change
 
 services:
   backend:
@@ -14,31 +17,26 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # SQLite paths are stored in a Docker volume so they persist across restarts.
       DATABASE_URL: "sqlite:////data/tft_arena.db"
       LANGMEM_CHROMA_PATH: "/data/chromadb"
-      # Docker sync can miss native FS events; force polling for reliable reloads.
       WATCHFILES_FORCE_POLLING: "true"
-      # Docker Desktop resolves host.docker.internal automatically on macOS/Windows.
-      # Override OLLAMA_BASE_URL for remote Ollama setups.
       OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
     volumes:
       - tft_arena_data:/data
     develop:
       watch:
-        # Sync Python source without rebuilding the image.
         - action: sync
           path: ./backend/app
           target: /app/app
-        # Rebuild if backend dependencies change.
         - action: rebuild
           path: ./backend/pyproject.toml
         - action: rebuild
           path: ./backend/uv.lock
 
-  frontend:
+  frontend-arena:
+    profiles: [tft]
     build:
-      context: ./frontend
+      context: ./frontend-arena
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
@@ -46,16 +44,31 @@ services:
       - backend
     develop:
       watch:
-        # Sync frontend source for instant Vite HMR updates.
         - action: sync
-          path: ./frontend/src
+          path: ./frontend-arena/src
           target: /app/src
         - action: sync
-          path: ./frontend/public
+          path: ./frontend-arena/public
           target: /app/public
-        # Rebuild if frontend dependencies change.
         - action: rebuild
-          path: ./frontend/package.json
+          path: ./frontend-arena/package.json
+
+  gauntlet:
+    profiles: [gauntlet]
+    build:
+      context: ./frontend-gauntlet
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5174:5174"
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend-gauntlet/src
+          target: /app/src
+        - action: rebuild
+          path: ./frontend-gauntlet/package.json
 
 volumes:
   tft_arena_data:

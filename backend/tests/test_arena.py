@@ -19,6 +19,7 @@ TFT Arena Test Suite — as specified in the implementation_plan.md:
 All tests run purely on the Python business logic without
 hitting any LLM API or database.
 """
+
 import pytest
 from langchain_core.messages import HumanMessage, AIMessage
 from app.agents.nodes.router import router_node, BUDGET_REPLENISH_AMOUNT
@@ -44,9 +45,11 @@ def stub_router_scoring(monkeypatch):
         fake_eval_speaker_importance,
     )
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def make_agent(name: str, budget: int = 4096) -> dict:
     return {
@@ -79,6 +82,7 @@ def make_state(**kwargs) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 1: Budget System
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestBudgetSystem:
@@ -114,7 +118,9 @@ class TestBudgetSystem:
             messages=[HumanMessage(content="hello")],
         )
         result = await router_node(state)
-        assert result["agent_budgets"]["Analyst"] == min(900 + BUDGET_REPLENISH_AMOUNT, 1000)
+        assert result["agent_budgets"]["Analyst"] == min(
+            900 + BUDGET_REPLENISH_AMOUNT, 1000
+        )
 
     async def test_agent_with_zero_budget_not_selected(self):
         """An agent with zero remaining budget is excluded from next_speakers."""
@@ -148,6 +154,7 @@ class TestBudgetSystem:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 2: Router / Supervisor Logic
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestRouterSupervisor:
@@ -208,6 +215,7 @@ class TestRouterSupervisor:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 3: Interruption Logic
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestInterruptionLogic:
@@ -277,6 +285,7 @@ class TestInterruptionLogic:
 # Test 4: Context Window Eviction (async)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestContextWindow:
     async def test_no_eviction_short_conversation(self):
@@ -292,6 +301,7 @@ class TestContextWindow:
 
         # Mock the LLM call to avoid hitting the API in tests
         from unittest.mock import patch, MagicMock
+
         mock_response = MagicMock()
         mock_response.content = "• Point 1\n• Point 2\n• Point 3"
 
@@ -314,6 +324,7 @@ class TestContextWindow:
         expected_recent = [m.content for m in messages[-RECENT_WINDOW:]]
 
         from unittest.mock import patch, MagicMock
+
         mock_response = MagicMock()
         mock_response.content = "Summary"
 

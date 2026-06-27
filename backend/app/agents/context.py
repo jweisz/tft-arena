@@ -3,6 +3,7 @@ Rolling context window with automatic summarization and eviction.
 Keeps the last N messages as-is, then summarizes older messages into
 a compact context window prefix to prevent token limit exhaustion.
 """
+
 from typing import Sequence, List, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from ..core.llm import get_llm, get_non_agent_model_config
@@ -51,6 +52,7 @@ async def maybe_summarize(
 
     try:
         import asyncio
+
         response = await asyncio.get_running_loop().run_in_executor(
             None, lambda: llm.invoke(prompt)
         )

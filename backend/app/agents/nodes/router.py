@@ -17,7 +17,9 @@ PARTICIPATION_THRESHOLD = 3.0
 
 
 def _tokenize(text: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9']+", text.lower()) if len(token) > 2}
+    return {
+        token for token in re.findall(r"[a-z0-9']+", text.lower()) if len(token) > 2
+    }
 
 
 def _extract_json_object(raw_content: str) -> dict[str, Any] | None:
@@ -30,14 +32,21 @@ def _extract_json_object(raw_content: str) -> dict[str, Any] | None:
     if start == -1 or end == -1 or end <= start:
         return None
 
-    return json.loads(raw_content[start:end + 1])
+    return json.loads(raw_content[start : end + 1])
 
 
-def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any]]) -> tuple[Dict[str, float], Dict[str, str]]:
+def _heuristic_importance_scores(
+    messages: List[Any], agents: List[Dict[str, Any]]
+) -> tuple[Dict[str, float], Dict[str, str]]:
     if not messages:
-        return {agent["name"]: 0.0 for agent in agents}, {agent["name"]: "No conversation context yet." for agent in agents}
+        return {agent["name"]: 0.0 for agent in agents}, {
+            agent["name"]: "No conversation context yet." for agent in agents
+        }
 
-    focus_message = next((message for message in reversed(messages) if message.type == "human"), messages[-1])
+    focus_message = next(
+        (message for message in reversed(messages) if message.type == "human"),
+        messages[-1],
+    )
     focus_text = str(focus_message.content)
     focus_tokens = _tokenize(focus_text)
 
@@ -48,10 +57,12 @@ def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any
     token_frequency: Dict[str, int] = {}
     for agent in agents:
         agent_name = agent["name"]
-        guidance = " ".join([
-            agent.get("role_description", ""),
-            agent.get("relevance_instructions", ""),
-        ]).strip()
+        guidance = " ".join(
+            [
+                agent.get("role_description", ""),
+                agent.get("relevance_instructions", ""),
+            ]
+        ).strip()
         guidance_tokens = _tokenize(guidance)
         guidance_by_agent[agent_name] = guidance_tokens
         for token in guidance_tokens:
@@ -66,8 +77,12 @@ def _heuristic_importance_scores(messages: List[Any], agents: List[Dict[str, Any
             score = 9.5
             reasons[agent_name] = "Agent was named directly in the message."
         elif overlap:
-            weighted_overlap = sum(1.0 / max(1, token_frequency.get(token, 1)) for token in overlap)
-            normalized_overlap = weighted_overlap / max(1.0, math.sqrt(len(guidance_tokens) + 1.0))
+            weighted_overlap = sum(
+                1.0 / max(1, token_frequency.get(token, 1)) for token in overlap
+            )
+            normalized_overlap = weighted_overlap / max(
+                1.0, math.sqrt(len(guidance_tokens) + 1.0)
+            )
             score = min(10.0, round(normalized_overlap * 18.0, 1))
             matched_terms = ", ".join(sorted(list(overlap))[:3])
             reasons[agent_name] = f"Matched topic cues: {matched_terms}."
@@ -107,6 +122,7 @@ def _extract_text_mentions(text: str, active_agents: List[Dict[str, Any]]) -> Li
     ordered_names = [name for _, name in found]
     return list(dict.fromkeys(ordered_names))
 
+
 async def eval_speaker_importance(
     messages: List[Any],
     agents: List[Dict[str, Any]],
@@ -118,18 +134,21 @@ async def eval_speaker_importance(
     """
     if not agents:
         provider, model_name = get_non_agent_model_config()
-        return {}, {}, {
-            "provider": provider,
-            "model": model_name,
-            "tokens_used": 0,
-            "latency_ms": 0.0,
-        }
+        return (
+            {},
+            {},
+            {
+                "provider": provider,
+                "model": model_name,
+                "tokens_used": 0,
+                "latency_ms": 0.0,
+            },
+        )
 
     # Context window: Use the last 5 messages to provide thematic flow.
     recent_msgs = messages[-5:]
     history_context = [
-        {"type": m.type, "content": str(m.content)[:500]}
-        for m in recent_msgs
+        {"type": m.type, "content": str(m.content)[:500]} for m in recent_msgs
     ]
 
     candidate_context = [
@@ -160,25 +179,30 @@ Return ONLY JSON with exactly two top-level keys:
 - reasons: object of agent name -> short explanation
 """.strip()
 
-    human_prompt = json.dumps({
-        "conversation": history_context,
-        "agents": candidate_context,
-        "requirements": {
-            "score_every_agent": True,
-            "reason_max_words": 16,
-            "prefer_1_to_3_top_agents": True,
+    human_prompt = json.dumps(
+        {
+            "conversation": history_context,
+            "agents": candidate_context,
+            "requirements": {
+                "score_every_agent": True,
+                "reason_max_words": 16,
+                "prefer_1_to_3_top_agents": True,
+            },
         },
-    }, ensure_ascii=True)
+        ensure_ascii=True,
+    )
 
     provider, model_name = get_non_agent_model_config()
 
     try:
         llm = get_llm(provider=provider, model_name=model_name, temperature=0)
         started = time.perf_counter()
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_prompt),
-        ])
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=human_prompt),
+            ]
+        )
         elapsed_ms = (time.perf_counter() - started) * 1000
 
         # Clean response text in case of markdown formatting or filler
@@ -187,45 +211,69 @@ Return ONLY JSON with exactly two top-level keys:
         tokens_used = usage.get("output_tokens", len(raw_content.split()))
         parsed = _extract_json_object(raw_content)
         if parsed is None:
-            logger.warning("router scoring returned non-json payload preview=%s", raw_content[:200])
-            heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
-            return heuristic_scores, heuristic_reasons, {
-                "provider": provider,
-                "model": model_name,
-                "tokens_used": tokens_used,
-                "latency_ms": round(elapsed_ms, 1),
-            }
+            logger.warning(
+                "router scoring returned non-json payload preview=%s", raw_content[:200]
+            )
+            heuristic_scores, heuristic_reasons = _heuristic_importance_scores(
+                messages, agents
+            )
+            return (
+                heuristic_scores,
+                heuristic_reasons,
+                {
+                    "provider": provider,
+                    "model": model_name,
+                    "tokens_used": tokens_used,
+                    "latency_ms": round(elapsed_ms, 1),
+                },
+            )
 
-        heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
+        heuristic_scores, heuristic_reasons = _heuristic_importance_scores(
+            messages, agents
+        )
         scores = {}
         reasons = {}
         for agent in agents:
             agent_name = agent["name"]
-            raw_score = parsed.get("scores", {}).get(agent_name, heuristic_scores.get(agent_name, 0.0))
+            raw_score = parsed.get("scores", {}).get(
+                agent_name, heuristic_scores.get(agent_name, 0.0)
+            )
             try:
                 score = max(0.0, min(10.0, float(raw_score)))
             except (TypeError, ValueError):
                 score = heuristic_scores.get(agent_name, 0.0)
 
             scores[agent_name] = score
-            reasons[agent_name] = str(parsed.get("reasons", {}).get(agent_name, heuristic_reasons.get(agent_name, "No reason provided.")))
+            reasons[agent_name] = str(
+                parsed.get("reasons", {}).get(
+                    agent_name, heuristic_reasons.get(agent_name, "No reason provided.")
+                )
+            )
 
-        return scores, reasons, {
-            "provider": provider,
-            "model": model_name,
-            "tokens_used": tokens_used,
-            "latency_ms": round(elapsed_ms, 1),
-        }
+        return (
+            scores,
+            reasons,
+            {
+                "provider": provider,
+                "model": model_name,
+                "tokens_used": tokens_used,
+                "latency_ms": round(elapsed_ms, 1),
+            },
+        )
     except Exception:
         logger.exception("router speaker-importance evaluation failed")
 
     heuristic_scores, heuristic_reasons = _heuristic_importance_scores(messages, agents)
-    return heuristic_scores, heuristic_reasons, {
-        "provider": provider,
-        "model": model_name,
-        "tokens_used": 0,
-        "latency_ms": 0.0,
-    }
+    return (
+        heuristic_scores,
+        heuristic_reasons,
+        {
+            "provider": provider,
+            "model": model_name,
+            "tokens_used": 0,
+            "latency_ms": 0.0,
+        },
+    )
 
 
 async def router_node(state: ArenaState) -> Dict[str, Any]:
@@ -255,7 +303,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
 
     # --- Emergency Stop ---
     if state.get("emergency_stop", False):
-        for name in agent_statuses: agent_statuses[name] = "Idle"
+        for name in agent_statuses:
+            agent_statuses[name] = "Idle"
         return {
             "next_speakers": [],
             "agent_budgets": agent_budgets,
@@ -266,7 +315,8 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
 
     # --- Interruption ---
     if state.get("interrupted", False):
-        for name in agent_statuses: agent_statuses[name] = "Idle"
+        for name in agent_statuses:
+            agent_statuses[name] = "Idle"
         return {
             "next_speakers": [],
             "interrupted": False,
@@ -277,7 +327,13 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         }
 
     if not messages:
-        return {"next_speakers": [], "agent_budgets": agent_budgets, "agent_statuses": agent_statuses, "agent_scores": {}, "agent_reasons": {}}
+        return {
+            "next_speakers": [],
+            "agent_budgets": agent_budgets,
+            "agent_statuses": agent_statuses,
+            "agent_scores": {},
+            "agent_reasons": {},
+        }
 
     last_msg = messages[-1]
     next_speakers = []
@@ -288,7 +344,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         for agent in active_agents:
             agent_budgets[agent["name"]] = min(
                 agent_budgets.get(agent["name"], 0) + BUDGET_REPLENISH_AMOUNT,
-                agent["token_budget"]
+                agent["token_budget"],
             )
 
         # Handle @Mention Override
@@ -296,12 +352,18 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         if not mentions:
             mentions = _extract_text_mentions(str(last_msg.content), active_agents)
         if mentions:
-            active_mentioned = [name for name in mentions if any(a["name"] == name for a in active_agents)]
+            active_mentioned = [
+                name
+                for name in mentions
+                if any(a["name"] == name for a in active_agents)
+            ]
             if active_mentioned:
                 next_speakers = active_mentioned
                 for agent in active_agents:
                     if agent["name"] in active_mentioned:
-                        agent_budgets[agent["name"]] = max(agent_budgets.get(agent["name"], 0), 1)
+                        agent_budgets[agent["name"]] = max(
+                            agent_budgets.get(agent["name"], 0), 1
+                        )
                         agent_statuses[agent["name"]] = "Thinking"
                         agent_scores[agent["name"]] = 10.0
                         agent_reasons[agent["name"]] = "Directly mentioned by the user."
@@ -317,7 +379,7 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
                     "agent_scores": agent_scores,
                     "agent_reasons": agent_reasons,
                     "turn_number": turn + 1,
-                    "mentions": []
+                    "mentions": [],
                 }
 
     # --- Step 2: Scoring & Candidate Selection (Human & AI) ---
@@ -334,20 +396,25 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
             "agent_statuses": agent_statuses,
             "agent_scores": {},
             "agent_reasons": {},
-            "turn_number": turn + (1 if last_msg.type == "human" else 0)
+            "turn_number": turn + (1 if last_msg.type == "human" else 0),
         }
 
     # Evaluate Importance and Sort
-    scores, reasons, router_runtime = await eval_speaker_importance(messages, candidates)
+    scores, reasons, router_runtime = await eval_speaker_importance(
+        messages, candidates
+    )
     agent_scores = scores
     agent_reasons = reasons
 
     # Sort candidates by score descending
-    sorted_candidates = sorted(candidates, key=lambda a: scores.get(a["name"], 0), reverse=True)
+    sorted_candidates = sorted(
+        candidates, key=lambda a: scores.get(a["name"], 0), reverse=True
+    )
 
     # Filter by threshold
     next_speakers = [
-        a["name"] for a in sorted_candidates
+        a["name"]
+        for a in sorted_candidates
         if scores.get(a["name"], 0) >= PARTICIPATION_THRESHOLD
     ]
 
@@ -359,7 +426,9 @@ async def router_node(state: ArenaState) -> Dict[str, Any]:
         # For AI-to-AI chaining, still require a minimum signal to allow chain termination.
         if last_msg.type == "human" or top_score >= 1.0:
             next_speakers = [top_agent["name"]]
-            agent_reasons[top_agent["name"]] = f"{agent_reasons.get(top_agent['name'], 'Best available match.')} Selected as the best available fallback."
+            agent_reasons[top_agent["name"]] = (
+                f"{agent_reasons.get(top_agent['name'], 'Best available match.')} Selected as the best available fallback."
+            )
 
     # Set status for next speakers
     for name in next_speakers:

@@ -7,9 +7,11 @@ from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 
 # In production this should be stored safely in env vars
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "super-secret-tft-arena-key-for-local-dev")
+SECRET_KEY = os.environ.get(
+    "JWT_SECRET_KEY", "super-secret-tft-arena-key-for-local-dev"
+)
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 ALLOWED_USER_EMAIL = os.environ.get("ALLOWED_USER_EMAIL", "")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -55,7 +57,9 @@ def _decode_subject(token: str) -> Optional[str]:
     return str(sub) if sub else None
 
 
-def _resolve_auth_context(token: Optional[str], token_source: Optional[str]) -> AuthContext:
+def _resolve_auth_context(
+    token: Optional[str], token_source: Optional[str]
+) -> AuthContext:
     mode = get_auth_mode()
     if mode == "local-open":
         # Keep local behavior permissive while still exposing auth seams.
@@ -114,7 +118,9 @@ def resolve_websocket_auth_context(websocket: WebSocket) -> AuthContext:
     source: Optional[str] = "authorization_header" if token else None
 
     if not token:
-        query_token = websocket.query_params.get("access_token") or websocket.query_params.get("token")
+        query_token = websocket.query_params.get(
+            "access_token"
+        ) or websocket.query_params.get("token")
         if query_token:
             token = query_token
             source = "query_param"
@@ -125,6 +131,7 @@ def resolve_websocket_auth_context(websocket: WebSocket) -> AuthContext:
 async def get_request_auth_context(request: Request) -> AuthContext:
     return resolve_request_auth_context(request)
 
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -134,6 +141,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(

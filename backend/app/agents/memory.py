@@ -8,6 +8,7 @@ Two namespaced collections:
   • room_{room_id}_agent_{agent_name}  — room-scoped agent memories
   • global_user_profile                — cross-room user knowledge
 """
+
 import os
 import hashlib
 import re
@@ -88,6 +89,7 @@ async def store_agent_memory(room_id: int, agent_name: str, content: str):
         return
     try:
         import uuid
+
         col = _get_collection(_room_collection_name(room_id, agent_name))
         col.add(
             documents=[content[:1000]],
@@ -97,7 +99,9 @@ async def store_agent_memory(room_id: int, agent_name: str, content: str):
         pass
 
 
-async def retrieve_user_profile(query: str = "user background expertise preferences") -> str:
+async def retrieve_user_profile(
+    query: str = "user background expertise preferences",
+) -> str:
     """Retrieve global user profile context."""
     if not _langmem_available:
         return ""
@@ -122,6 +126,7 @@ async def update_user_profile(new_info: str):
         return
     try:
         import uuid
+
         col = _get_collection(_user_collection_name())
         col.add(documents=[new_info[:500]], ids=[str(uuid.uuid4())])
     except Exception:

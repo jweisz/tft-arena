@@ -1,6 +1,7 @@
 from fastapi import WebSocket
 from typing import List, Dict
 
+
 class ConnectionManager:
     def __init__(self):
         # Maps room_id to a list of active websocket connections
@@ -46,5 +47,6 @@ class ConnectionManager:
 
         for connection in stale:
             self.disconnect(connection, room_id)
+
 
 manager = ConnectionManager()

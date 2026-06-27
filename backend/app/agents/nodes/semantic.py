@@ -4,6 +4,7 @@ Produces two outputs pushed over WebSocket:
   1. 'annotation' events: fact-checks / assumption flags for specific excerpts
   2. 'scratchpad' events: updated living summary of the conversation
 """
+
 import json
 import logging
 import re
@@ -55,7 +56,7 @@ def _extract_json_object(raw_content: str) -> dict[str, Any] | None:
     if start == -1 or end == -1 or end <= start:
         return None
 
-    return json.loads(raw_content[start:end + 1])
+    return json.loads(raw_content[start : end + 1])
 
 
 def _normalize_semantic_result(result: dict[str, Any]) -> Dict[str, Any]:
@@ -75,13 +76,19 @@ def _normalize_semantic_result(result: dict[str, Any]) -> Dict[str, Any]:
         "annotations": annotations,
         "scratchpad": {
             "consensus": str(consensus) if consensus is not None else "",
-            "open_questions": [str(item) for item in open_questions] if isinstance(open_questions, list) else [],
-            "key_ideas": [str(item) for item in key_ideas] if isinstance(key_ideas, list) else [],
+            "open_questions": [str(item) for item in open_questions]
+            if isinstance(open_questions, list)
+            else [],
+            "key_ideas": [str(item) for item in key_ideas]
+            if isinstance(key_ideas, list)
+            else [],
         },
     }
 
 
-def _build_model_candidates(initial_provider: str, initial_model: str) -> list[tuple[str, str]]:
+def _build_model_candidates(
+    initial_provider: str, initial_model: str
+) -> list[tuple[str, str]]:
     candidates: list[tuple[str, str]] = [(initial_provider, initial_model)]
 
     db = SessionLocal()
@@ -95,7 +102,9 @@ def _build_model_candidates(initial_provider: str, initial_model: str) -> list[t
             candidates.append(("gemini", "gemini/gemini-2.0-flash"))
 
         # Prefer models already configured by the user in Agent Management.
-        configured_agents = db.query(Agent).order_by(Agent.sort_order.asc(), Agent.id.asc()).all()
+        configured_agents = (
+            db.query(Agent).order_by(Agent.sort_order.asc(), Agent.id.asc()).all()
+        )
         for agent in configured_agents:
             provider = (agent.provider or "").strip()
             model = (agent.model or "").strip()
@@ -105,11 +114,13 @@ def _build_model_candidates(initial_provider: str, initial_model: str) -> list[t
         db.close()
 
     # Last-resort local fallbacks for typical Ollama installs.
-    candidates.extend([
-      ("ollama", "llama3.2:3b"),
-      ("ollama", "llama3.1:8b"),
-      ("ollama", "granite3.3:2b"),
-    ])
+    candidates.extend(
+        [
+            ("ollama", "llama3.2:3b"),
+            ("ollama", "llama3.1:8b"),
+            ("ollama", "granite3.3:2b"),
+        ]
+    )
 
     deduped: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -135,7 +146,9 @@ async def run_semantic_agent(
 
     prompt = [
         SystemMessage(content=SEMANTIC_SYSTEM_PROMPT),
-        HumanMessage(content=f"Conversation so far:\n\n{context}\n\nAnalyze the latest human message.")
+        HumanMessage(
+            content=f"Conversation so far:\n\n{context}\n\nAnalyze the latest human message."
+        ),
     ]
 
     if not provider or not model:
@@ -143,7 +156,9 @@ async def run_semantic_agent(
 
     for candidate_provider, candidate_model in _build_model_candidates(provider, model):
         try:
-            llm = get_llm(provider=candidate_provider, model_name=candidate_model, temperature=0.2)
+            llm = get_llm(
+                provider=candidate_provider, model_name=candidate_model, temperature=0.2
+            )
             response = await llm.ainvoke(prompt)
             raw_content = str(response.content).strip()
             parsed = _extract_json_object(raw_content)
@@ -165,4 +180,7 @@ async def run_semantic_agent(
             )
 
     # Return a safe empty result rather than crashing.
-    return {"annotations": [], "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []}}
+    return {
+        "annotations": [],
+        "scratchpad": {"consensus": "", "open_questions": [], "key_ideas": []},
+    }

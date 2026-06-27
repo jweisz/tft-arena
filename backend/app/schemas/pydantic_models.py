@@ -2,25 +2,31 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
+
 class UserBase(BaseModel):
     email: str
     name: Optional[str] = None
+
 
 class UserResponse(UserBase):
     id: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
 class RoomCreate(BaseModel):
     name: str
 
+
 class RoomUpdate(BaseModel):
     name: str
+
 
 class RoomResponse(RoomCreate):
     id: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 class AgentBase(BaseModel):
     name: str
@@ -34,8 +40,10 @@ class AgentBase(BaseModel):
     provider: str = "ollama"
     model: str = "llama3"
 
+
 class AgentCreate(AgentBase):
     pass
+
 
 class AgentResponse(AgentBase):
     id: int
@@ -45,9 +53,12 @@ class AgentResponse(AgentBase):
 class AgentReorderRequest(BaseModel):
     agent_ids: List[int]
 
+
 class RoomAgentResponse(AgentResponse):
     """Returned when fetching agents for a specific room."""
+
     is_active: bool
+
 
 class MessageBase(BaseModel):
     role: str
@@ -57,8 +68,10 @@ class MessageBase(BaseModel):
     latency_ms: float = 0.0
     is_interrupted: bool = False
 
+
 class MessageCreate(MessageBase):
     pass
+
 
 class MessageResponse(MessageBase):
     id: int

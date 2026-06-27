@@ -80,10 +80,9 @@ async def websocket_endpoint(
     inference_processes: dict[str, dict[str, Any]] = {}
 
     # Initial activity stats
-    await manager.send_json_to_room({
-        "type": "activity_stats",
-        "stats": get_activity_stats(room_id, db)
-    }, room_id)
+    await manager.send_json_to_room(
+        {"type": "activity_stats", "stats": get_activity_stats(room_id, db)}, room_id
+    )
 
     room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
     initial_default_budget, _ = load_settings(db)
@@ -103,7 +102,9 @@ async def websocket_endpoint(
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
-                await manager.send_json_to_room({"type": "error", "error": "Invalid message payload"}, room_id)
+                await manager.send_json_to_room(
+                    {"type": "error", "error": "Invalid message payload"}, room_id
+                )
                 continue
 
             user_text = payload.get("text", "").strip()
@@ -158,10 +159,11 @@ async def websocket_endpoint(
                     proc["tokens_per_sec"] = None
                 await broadcast_inference_status(room_id, inference_processes)
             except Exception as exc:
-                await manager.send_json_to_room({"type": "error", "error": str(exc)}, room_id)
+                await manager.send_json_to_room(
+                    {"type": "error", "error": str(exc)}, room_id
+                )
             finally:
                 clear_turn_task(room_id)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
-

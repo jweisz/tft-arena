@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
+
 class GoogleToken(BaseModel):
     credential: str
 
@@ -26,6 +27,7 @@ def get_policy_map():
         "auth_mode": get_auth_mode(),
         "routes": serialize_route_policies(),
     }
+
 
 @router.post("/verify_google_token")
 def verify_google_token(token_data: GoogleToken):
@@ -39,7 +41,9 @@ def verify_google_token(token_data: GoogleToken):
 
     try:
         # Verify the Google JWT token
-        idinfo = id_token.verify_oauth2_token(token_data.credential, requests.Request(), GOOGLE_CLIENT_ID)
+        idinfo = id_token.verify_oauth2_token(
+            token_data.credential, requests.Request(), GOOGLE_CLIENT_ID
+        )
 
         email = idinfo.get("email")
         if not email or email.lower() != ALLOWED_USER_EMAIL.lower():
@@ -50,7 +54,11 @@ def verify_google_token(token_data: GoogleToken):
             data={"sub": email}, expires_delta=access_token_expires
         )
 
-        return {"access_token": access_token, "token_type": "bearer", "user": {"email": email, "name": idinfo.get("name")}}
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {"email": email, "name": idinfo.get("name")},
+        }
 
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")

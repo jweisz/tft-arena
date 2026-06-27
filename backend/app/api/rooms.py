@@ -7,6 +7,7 @@ from ..models.db import get_db
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 
+
 @router.post("/", response_model=pydantic_models.RoomResponse)
 def create_room(room_in: pydantic_models.RoomCreate, db: Session = Depends(get_db)):
     db_room = schema.Room(name=room_in.name)
@@ -15,17 +16,31 @@ def create_room(room_in: pydantic_models.RoomCreate, db: Session = Depends(get_d
     db.refresh(db_room)
 
     # Auto-associate all global agents as active
-    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
+    all_agents = (
+        db.query(schema.Agent)
+        .order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc())
+        .all()
+    )
     for agent in all_agents:
-        room_agent = schema.RoomAgent(room_id=db_room.id, agent_id=agent.id, is_active=True)
+        room_agent = schema.RoomAgent(
+            room_id=db_room.id, agent_id=agent.id, is_active=True
+        )
         db.add(room_agent)
 
     db.commit()
     return db_room
 
+
 @router.get("/", response_model=List[pydantic_models.RoomResponse])
 def read_rooms(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(schema.Room).order_by(schema.Room.created_at.desc()).offset(skip).limit(limit).all()
+    return (
+        db.query(schema.Room)
+        .order_by(schema.Room.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
 
 @router.get("/{room_id}", response_model=pydantic_models.RoomResponse)
 def read_room(room_id: int, db: Session = Depends(get_db)):
@@ -34,8 +49,11 @@ def read_room(room_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Room not found")
     return room
 
+
 @router.patch("/{room_id}", response_model=pydantic_models.RoomResponse)
-def update_room(room_id: int, room_in: pydantic_models.RoomUpdate, db: Session = Depends(get_db)):
+def update_room(
+    room_id: int, room_in: pydantic_models.RoomUpdate, db: Session = Depends(get_db)
+):
     room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -44,9 +62,11 @@ def update_room(room_id: int, room_in: pydantic_models.RoomUpdate, db: Session =
     db.refresh(room)
     return room
 
+
 @router.delete("/{room_id}")
 async def delete_room(room_id: int, db: Session = Depends(get_db)):
     from ..agents.memory import delete_room_memories
+
     print(f"--- ATTEMPTING DELETE ROOM {room_id} ---")
     room = db.query(schema.Room).filter(schema.Room.id == room_id).first()
     if not room:
@@ -59,6 +79,7 @@ async def delete_room(room_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Room {room_id} deleted"}
 
+
 @router.get("/{room_id}/agents", response_model=List[pydantic_models.RoomAgentResponse])
 def get_room_agents(room_id: int, db: Session = Depends(get_db)):
     """Returns ALL global agents, indicating if they are active in this specific room."""
@@ -67,11 +88,17 @@ def get_room_agents(room_id: int, db: Session = Depends(get_db)):
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
+    all_agents = (
+        db.query(schema.Agent)
+        .order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc())
+        .all()
+    )
     # Get active states for this room
     active_mappings = {
         ra.agent_id: ra.is_active
-        for ra in db.query(schema.RoomAgent).filter(schema.RoomAgent.room_id == room_id).all()
+        for ra in db.query(schema.RoomAgent)
+        .filter(schema.RoomAgent.room_id == room_id)
+        .all()
     }
 
     settings = db.query(schema.GlobalSettings).first()
@@ -82,7 +109,9 @@ def get_room_agents(room_id: int, db: Session = Depends(get_db)):
         # Default to inactive if no mapping exists yet
         is_active = active_mappings.get(agent.id, False)
         # Convert SQLAlchemy model to dict and add is_active
-        agent_data = {col.name: getattr(agent, col.name) for col in agent.__table__.columns}
+        agent_data = {
+            col.name: getattr(agent, col.name) for col in agent.__table__.columns
+        }
         agent_data["is_active"] = is_active
 
         # Apply global fallback if budget is NULL
@@ -92,6 +121,7 @@ def get_room_agents(room_id: int, db: Session = Depends(get_db)):
         result.append(agent_data)
 
     return result
+
 
 @router.post("/{room_id}/agents/{agent_id}/toggle")
 def toggle_room_agent(room_id: int, agent_id: int, db: Session = Depends(get_db)):
@@ -104,10 +134,13 @@ def toggle_room_agent(room_id: int, agent_id: int, db: Session = Depends(get_db)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    mapping = db.query(schema.RoomAgent).filter(
-        schema.RoomAgent.room_id == room_id,
-        schema.RoomAgent.agent_id == agent_id
-    ).first()
+    mapping = (
+        db.query(schema.RoomAgent)
+        .filter(
+            schema.RoomAgent.room_id == room_id, schema.RoomAgent.agent_id == agent_id
+        )
+        .first()
+    )
 
     if mapping:
         mapping.is_active = not mapping.is_active
@@ -118,6 +151,7 @@ def toggle_room_agent(room_id: int, agent_id: int, db: Session = Depends(get_db)
     db.commit()
     return {"message": "Toggled", "is_active": mapping.is_active}
 
+
 @router.post("/{room_id}/agents/bulk-active")
 def bulk_active_room_agents(room_id: int, active: bool, db: Session = Depends(get_db)):
     """Sets all agents' active status in a room."""
@@ -125,17 +159,27 @@ def bulk_active_room_agents(room_id: int, active: bool, db: Session = Depends(ge
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    all_agents = db.query(schema.Agent).order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc()).all()
+    all_agents = (
+        db.query(schema.Agent)
+        .order_by(schema.Agent.sort_order.asc(), schema.Agent.id.asc())
+        .all()
+    )
     for agent in all_agents:
-        mapping = db.query(schema.RoomAgent).filter(
-            schema.RoomAgent.room_id == room_id,
-            schema.RoomAgent.agent_id == agent.id
-        ).first()
+        mapping = (
+            db.query(schema.RoomAgent)
+            .filter(
+                schema.RoomAgent.room_id == room_id,
+                schema.RoomAgent.agent_id == agent.id,
+            )
+            .first()
+        )
 
         if mapping:
             mapping.is_active = active
         else:
-            mapping = schema.RoomAgent(room_id=room_id, agent_id=agent.id, is_active=active)
+            mapping = schema.RoomAgent(
+                room_id=room_id, agent_id=agent.id, is_active=active
+            )
             db.add(mapping)
 
     db.commit()

@@ -4,8 +4,11 @@ from pathlib import Path
 
 
 def _fallback_role_description(content: str, filename: str) -> str:
-    first_paragraph = next((block.strip() for block in content.split("\n\n") if block.strip()), "")
+    first_paragraph = next(
+        (block.strip() for block in content.split("\n\n") if block.strip()), ""
+    )
     return first_paragraph or filename
+
 
 class PromptLoader:
     def __init__(self, prompts_dir: Optional[str] = None):
@@ -42,23 +45,31 @@ class PromptLoader:
                     return {
                         "name": metadata.get("name", file_path.stem),
                         "emoji": metadata.get("emoji", "🤖"),
-                        "role_description": metadata.get("role_description", _fallback_role_description(description, file_path.stem)),
-                        "relevance_instructions": metadata.get("relevance_instructions", ""),
+                        "role_description": metadata.get(
+                            "role_description",
+                            _fallback_role_description(description, file_path.stem),
+                        ),
+                        "relevance_instructions": metadata.get(
+                            "relevance_instructions", ""
+                        ),
                         "system_prompt": description,
-                        "filename": file_path.name
+                        "filename": file_path.name,
                     }
 
             # Fallback if no frontmatter
             return {
                 "name": file_path.stem,
                 "emoji": "🤖",
-                "role_description": _fallback_role_description(content.strip(), file_path.stem),
+                "role_description": _fallback_role_description(
+                    content.strip(), file_path.stem
+                ),
                 "relevance_instructions": "",
                 "system_prompt": content.strip(),
-                "filename": file_path.name
+                "filename": file_path.name,
             }
         except Exception as e:
             print(f"Error parsing {file_path}: {e}")
             return None
+
 
 prompt_loader = PromptLoader()

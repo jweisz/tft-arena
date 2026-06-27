@@ -4,6 +4,7 @@ state machine checks before (and during) each agent turn.
 We store the flag in a simple in-process dict for now; the WebSocket
 handler reads from this dict when constructing the initial state.
 """
+
 import asyncio
 from typing import Any
 
@@ -37,14 +38,22 @@ def get_emergency_flag(db: Session, room_id: int) -> bool:
     if room_id in emergency_flags:
         return emergency_flags[room_id]
 
-    control_state = db.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room_id).first()
+    control_state = (
+        db.query(schema.RoomControlState)
+        .filter(schema.RoomControlState.room_id == room_id)
+        .first()
+    )
     value = bool(control_state.emergency_stop) if control_state else False
     emergency_flags[room_id] = value
     return value
 
 
 def set_emergency_flag(db: Session, room_id: int, stopped: bool) -> None:
-    control_state = db.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room_id).first()
+    control_state = (
+        db.query(schema.RoomControlState)
+        .filter(schema.RoomControlState.room_id == room_id)
+        .first()
+    )
     if control_state is None:
         control_state = schema.RoomControlState(room_id=room_id, emergency_stop=stopped)
         db.add(control_state)
@@ -52,6 +61,7 @@ def set_emergency_flag(db: Session, room_id: int, stopped: bool) -> None:
         control_state.emergency_stop = stopped
     db.commit()
     emergency_flags[room_id] = stopped
+
 
 @router.post("/{room_id}/emergency-stop")
 def emergency_stop(room_id: int, db: Session = Depends(get_db)):
@@ -62,6 +72,7 @@ def emergency_stop(room_id: int, db: Session = Depends(get_db)):
         task.cancel()
         cancelled = True
     return {"status": "stopped", "room_id": room_id, "cancelled": cancelled}
+
 
 @router.post("/{room_id}/resume")
 def resume(room_id: int, db: Session = Depends(get_db)):

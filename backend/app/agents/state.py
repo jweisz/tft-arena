@@ -3,6 +3,7 @@ from typing import Annotated, TypedDict, Sequence, List, Dict
 
 from langchain_core.messages import BaseMessage
 
+
 class AgentConfig(TypedDict):
     id: int
     name: str
@@ -12,7 +13,8 @@ class AgentConfig(TypedDict):
     emoji: str
     model: str
     provider: str
-    token_budget: int          # max turns (not tokens) this agent can spend per session per human response
+    token_budget: int  # max turns (not tokens) this agent can spend per session per human response
+
 
 class TelemetryEntry(TypedDict):
     agent_name: str
@@ -20,8 +22,10 @@ class TelemetryEntry(TypedDict):
     latency_ms: float
     turn: int
 
+
 class ArenaState(TypedDict):
     """LangGraph state keeping track of conversation history and agent coordination."""
+
     # Chat messages in the room
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
@@ -50,7 +54,7 @@ class ArenaState(TypedDict):
     telemetry: Annotated[List[TelemetryEntry], operator.add]
     mentions: List[str]  # Names of the agents specifically tagged with @
     agent_scores: Dict[str, float]  # Scores calculated by the importance evaluator
-    agent_reasons: Dict[str, str]   # Short reasoning text per agent from the router
+    agent_reasons: Dict[str, str]  # Short reasoning text per agent from the router
     router_runtime: Annotated[Dict[str, float], operator.ior]
 
     room_id: int

@@ -42,7 +42,11 @@ def test_rooms_crud_and_agent_auto_association(client, db_session):
     created_room = create_response.json()
     assert created_room["name"] == "Planning Room"
 
-    room_agents = db_session.query(schema.RoomAgent).filter(schema.RoomAgent.room_id == created_room["id"]).all()
+    room_agents = (
+        db_session.query(schema.RoomAgent)
+        .filter(schema.RoomAgent.room_id == created_room["id"])
+        .all()
+    )
     assert {(mapping.agent_id, mapping.is_active) for mapping in room_agents} == {
         (agent_a.id, True),
         (agent_b.id, True),
@@ -52,14 +56,21 @@ def test_rooms_crud_and_agent_auto_association(client, db_session):
     assert list_response.status_code == 200
     assert list_response.json()[0]["id"] == created_room["id"]
 
-    rename_response = client.patch(f"/api/rooms/{created_room['id']}", json={"name": "Renamed Room"})
+    rename_response = client.patch(
+        f"/api/rooms/{created_room['id']}", json={"name": "Renamed Room"}
+    )
     assert rename_response.status_code == 200
     assert rename_response.json()["name"] == "Renamed Room"
 
     delete_response = client.delete(f"/api/rooms/{created_room['id']}")
     assert delete_response.status_code == 200
     assert delete_response.json()["message"] == f"Room {created_room['id']} deleted"
-    assert db_session.query(schema.Room).filter(schema.Room.id == created_room["id"]).first() is None
+    assert (
+        db_session.query(schema.Room)
+        .filter(schema.Room.id == created_room["id"])
+        .first()
+        is None
+    )
 
 
 def test_room_agent_toggle_and_bulk_active(client, db_session):
@@ -117,7 +128,9 @@ def test_settings_partial_update_and_readback(client):
     assert payload["non_agent_provider"] == "ollama"
     assert payload["non_agent_model"] == "llama3"
 
-    partial_update = client.post("/api/settings/", json={"global_system_instruction": "Updated."})
+    partial_update = client.post(
+        "/api/settings/", json={"global_system_instruction": "Updated."}
+    )
     assert partial_update.status_code == 200
 
     updated_payload = client.get("/api/settings/").json()
@@ -134,7 +147,9 @@ def test_agents_crud_and_duplicate_name_rejection(client, monkeypatch):
     async def _fake_delete_agent_memories(agent_name: str):
         deleted_agent_names.append(agent_name)
 
-    monkeypatch.setattr("app.agents.memory.delete_agent_memories", _fake_delete_agent_memories)
+    monkeypatch.setattr(
+        "app.agents.memory.delete_agent_memories", _fake_delete_agent_memories
+    )
 
     create_response = client.post(
         "/api/agents/",
@@ -199,7 +214,9 @@ def test_agents_reorder_updates_management_and_room_roster_order(client, db_sess
     second_agent.sort_order = 2
     db_session.commit()
 
-    reorder_response = client.post("/api/agents/reorder", json={"agent_ids": [second_agent.id, first_agent.id]})
+    reorder_response = client.post(
+        "/api/agents/reorder", json={"agent_ids": [second_agent.id, first_agent.id]}
+    )
     assert reorder_response.status_code == 200
     assert [agent["name"] for agent in reorder_response.json()] == ["Critic", "Analyst"]
 
@@ -210,17 +227,28 @@ def test_agents_reorder_updates_management_and_room_roster_order(client, db_sess
     room = _create_room(db_session)
     room_agents_response = client.get(f"/api/rooms/{room.id}/agents")
     assert room_agents_response.status_code == 200
-    assert [agent["name"] for agent in room_agents_response.json()] == ["Critic", "Analyst"]
+    assert [agent["name"] for agent in room_agents_response.json()] == [
+        "Critic",
+        "Analyst",
+    ]
 
 
 def test_messages_list_and_export(client, db_session):
     agent = _create_agent(db_session, name="Analyst")
     room = _create_room(db_session, name="Export Room")
 
-    db_session.add_all([
-        schema.Message(room_id=room.id, role="human", content="What do you think?"),
-        schema.Message(room_id=room.id, role="agent", content="I think it works.", agent_id=agent.id, is_interrupted=True),
-    ])
+    db_session.add_all(
+        [
+            schema.Message(room_id=room.id, role="human", content="What do you think?"),
+            schema.Message(
+                room_id=room.id,
+                role="agent",
+                content="I think it works.",
+                agent_id=agent.id,
+                is_interrupted=True,
+            ),
+        ]
+    )
     db_session.commit()
 
     list_response = client.get(f"/api/rooms/{room.id}/messages/")
@@ -242,7 +270,9 @@ def test_messages_list_returns_most_recent_window(client, db_session):
     room = _create_room(db_session, name="Window Room")
 
     for idx in range(1, 6):
-        db_session.add(schema.Message(room_id=room.id, role="human", content=f"msg-{idx}"))
+        db_session.add(
+            schema.Message(room_id=room.id, role="human", content=f"msg-{idx}")
+        )
     db_session.commit()
 
     list_response = client.get(f"/api/rooms/{room.id}/messages/?limit=3")
@@ -254,7 +284,11 @@ def test_messages_list_returns_most_recent_window(client, db_session):
 def test_control_routes_toggle_room_flags(client):
     stop_response = client.post("/api/rooms/5/emergency-stop")
     assert stop_response.status_code == 200
-    assert stop_response.json() == {"status": "stopped", "room_id": 5, "cancelled": False}
+    assert stop_response.json() == {
+        "status": "stopped",
+        "room_id": 5,
+        "cancelled": False,
+    }
 
     resume_response = client.post("/api/rooms/5/resume")
     assert resume_response.status_code == 200
@@ -267,7 +301,11 @@ def test_control_routes_persist_room_control_state(client, db_session):
     stop_response = client.post(f"/api/rooms/{room.id}/emergency-stop")
     assert stop_response.status_code == 200
 
-    state = db_session.query(schema.RoomControlState).filter(schema.RoomControlState.room_id == room.id).first()
+    state = (
+        db_session.query(schema.RoomControlState)
+        .filter(schema.RoomControlState.room_id == room.id)
+        .first()
+    )
     assert state is not None
     assert state.emergency_stop is True
 

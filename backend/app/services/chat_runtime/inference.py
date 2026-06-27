@@ -95,7 +95,9 @@ def ordered_processes(processes: dict[str, dict[str, Any]]) -> list[dict[str, An
     )
 
 
-def compute_tokens_per_second(tokens_used: int | float | None, latency_ms: int | float | None) -> float | None:
+def compute_tokens_per_second(
+    tokens_used: int | float | None, latency_ms: int | float | None
+) -> float | None:
     if tokens_used is None or latency_ms is None:
         return None
 

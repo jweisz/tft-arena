@@ -1,16 +1,28 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Text,
+    Float,
+)
 from sqlalchemy.orm import relationship
 from .db import Base
 
+
 class User(Base):
     """Single user profile populated via Google OAuth."""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 
 class GlobalSettings(Base):
     __tablename__ = "global_settings"
@@ -29,6 +41,7 @@ class GlobalSettings(Base):
     non_agent_provider = Column(String, nullable=True)
     non_agent_model = Column(String, nullable=True)
 
+
 class Room(Base):
     __tablename__ = "rooms"
 
@@ -36,23 +49,37 @@ class Room(Base):
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
-    room_agents = relationship("RoomAgent", back_populates="room", cascade="all, delete-orphan")
-    control_state = relationship("RoomControlState", back_populates="room", cascade="all, delete-orphan", uselist=False)
+    messages = relationship(
+        "Message", back_populates="room", cascade="all, delete-orphan"
+    )
+    room_agents = relationship(
+        "RoomAgent", back_populates="room", cascade="all, delete-orphan"
+    )
+    control_state = relationship(
+        "RoomControlState",
+        back_populates="room",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class RoomControlState(Base):
     """Room-scoped operational controls that should survive process restarts."""
+
     __tablename__ = "room_control_states"
 
     room_id = Column(Integer, ForeignKey("rooms.id"), primary_key=True)
     emergency_stop = Column(Boolean, default=False, nullable=False)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
 
     room = relationship("Room", back_populates="control_state")
 
+
 class Agent(Base):
     """Global pool of agent blueprints."""
+
     __tablename__ = "agents"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -65,13 +92,17 @@ class Agent(Base):
     emoji = Column(String, default="🤖")
 
     token_budget = Column(Integer, default=3)
-    provider = Column(String, default="openai") # e.g. openai, anthropic
+    provider = Column(String, default="openai")  # e.g. openai, anthropic
     model = Column(String, default="gpt-4o")
 
-    room_agents = relationship("RoomAgent", back_populates="agent", cascade="all, delete-orphan")
+    room_agents = relationship(
+        "RoomAgent", back_populates="agent", cascade="all, delete-orphan"
+    )
+
 
 class RoomAgent(Base):
     """Mapping table controlling which global agents are active in which room."""
+
     __tablename__ = "room_agents"
 
     room_id = Column(Integer, ForeignKey("rooms.id"), primary_key=True)
@@ -81,8 +112,10 @@ class RoomAgent(Base):
     room = relationship("Room", back_populates="room_agents")
     agent = relationship("Agent", back_populates="room_agents")
 
+
 class Message(Base):
     """Raw chat transcripts for the operational DB."""
+
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -102,3 +135,71 @@ class Message(Base):
 
     room = relationship("Room", back_populates="messages")
     agent = relationship("Agent")
+
+
+# ---------------------------------------------------------------------------
+# Idea Gauntlet tables
+# ---------------------------------------------------------------------------
+
+
+class GauntletSession(Base):
+    """A single 'idea gauntlet' run: the user defends one idea against 8 agents."""
+
+    __tablename__ = "gauntlet_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    idea = Column(Text, nullable=False)
+    agent_ids = Column(Text, nullable=False)  # JSON list of 8 agent IDs
+    status = Column(String, default="active", nullable=False)  # "active" | "complete"
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    bosses = relationship(
+        "BattleBoss", back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class BattleBoss(Base):
+    """One agent-vs-user battle within a GauntletSession."""
+
+    __tablename__ = "battle_bosses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("gauntlet_sessions.id"), nullable=False)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False)
+    status = Column(
+        String, default="pending", nullable=False
+    )  # "pending" | "active" | "defeated" | "failed"
+    user_hp = Column(Integer, default=100, nullable=False)
+    agent_hp = Column(Integer, default=100, nullable=False)
+    provider_override = Column(
+        String, nullable=True
+    )  # overrides agent.provider for this battle
+    model_override = Column(
+        String, nullable=True
+    )  # overrides agent.model for this battle
+
+    session = relationship("GauntletSession", back_populates="bosses")
+    agent = relationship("Agent")
+    messages = relationship(
+        "BattleMessage", back_populates="boss", cascade="all, delete-orphan"
+    )
+
+
+class BattleMessage(Base):
+    """A single turn in a BattleBoss conversation."""
+
+    __tablename__ = "battle_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    boss_id = Column(Integer, ForeignKey("battle_bosses.id"), nullable=False)
+    role = Column(String, nullable=False)  # "user" | "agent"
+    content = Column(Text, nullable=False)
+    damage = Column(Integer, nullable=True)  # HP damage dealt to the opposing side
+    damage_reason = Column(
+        Text, nullable=True
+    )  # one-line judge rationale for the score
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    boss = relationship("BattleBoss", back_populates="messages")
