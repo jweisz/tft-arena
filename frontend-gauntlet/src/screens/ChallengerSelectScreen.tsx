@@ -4,6 +4,7 @@ import {
   gauntlet,
   providersApi,
   type AgentSummary,
+  type Difficulty,
   type ProviderInfo,
 } from "../lib/api";
 import { useGameStore } from "../store/gameStore";
@@ -62,6 +63,7 @@ export default function ChallengerSelectScreen() {
   const [swapState, setSwapState] = useState<SwapState>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [difficulty, setDifficulty] = useState<Difficulty>("difficult");
   // Mass-set model state
   const [massProvider, setMassProvider] = useState("");
   const [massModel, setMassModel] = useState("");
@@ -106,6 +108,7 @@ export default function ChallengerSelectScreen() {
         pendingIdea,
         pendingAgents.map((a) => a.id),
         overrides,
+        difficulty,
       );
       setSession(session);
       navigate("/stage-select");
@@ -279,6 +282,47 @@ export default function ChallengerSelectScreen() {
           </button>
         </div>
       )}
+
+      {/* Difficulty picker */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "min(680px, 100%)" }}>
+        <span style={{ fontSize: "0.55rem", color: "var(--nes-gray)", alignSelf: "flex-start" }}>DIFFICULTY:</span>
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          {(
+            [
+              { id: "easy" as Difficulty,      label: "EASY",      color: "var(--nes-green)", hint: "hit harder · take less damage" },
+              { id: "normal" as Difficulty,    label: "NORMAL",    color: "var(--nes-yellow)", hint: "slight player advantage" },
+              { id: "difficult" as Difficulty, label: "DIFFICULT", color: "var(--nes-red)",   hint: "balanced · current default" },
+            ] as const
+          ).map(({ id, label, color, hint }) => {
+            const active = difficulty === id;
+            return (
+              <button
+                key={id}
+                onClick={() => { blip(); setDifficulty(id); }}
+                style={{
+                  flex: 1,
+                  background: active ? color : "var(--nes-darkgray)",
+                  border: `3px solid ${active ? color : "var(--nes-gray)"}`,
+                  boxShadow: active ? `3px 3px 0 rgba(0,0,0,0.4)` : "none",
+                  color: active ? "var(--nes-black)" : "var(--nes-gray)",
+                  fontFamily: "inherit",
+                  fontSize: "0.6rem",
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  transition: "all 80ms",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span>{label}</span>
+                <span style={{ fontSize: "0.45rem", opacity: active ? 0.8 : 0.4 }}>{hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {loading ? (
         <p style={{ fontSize: "0.875rem", color: "var(--nes-gray)" }}>

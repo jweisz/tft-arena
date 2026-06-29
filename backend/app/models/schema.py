@@ -152,6 +152,7 @@ class GauntletSession(Base):
     idea = Column(Text, nullable=False)
     agent_ids = Column(Text, nullable=False)  # JSON list of 8 agent IDs
     status = Column(String, default="active", nullable=False)  # "active" | "complete"
+    difficulty = Column(String, default="difficult", nullable=False)  # "easy" | "normal" | "difficult"
     summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

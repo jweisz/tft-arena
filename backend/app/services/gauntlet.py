@@ -21,6 +21,20 @@ MAX_HP = 100
 MIN_DAMAGE = 12  # even a weak argument makes a dent
 MAX_DAMAGE = 40  # a devastating argument deals significant HP
 
+# Difficulty multipliers applied after scoring.
+# "user" = multiplier on damage the player deals to the boss.
+# "boss" = multiplier on damage the boss deals to the player.
+DIFFICULTY_MULTIPLIERS: dict[str, dict[str, float]] = {
+    "easy":      {"user": 1.5,  "boss": 0.75},
+    "normal":    {"user": 1.2,  "boss": 0.9},
+    "difficult": {"user": 1.0,  "boss": 1.0},
+}
+
+
+def apply_difficulty(user_damage: int, agent_damage: int, difficulty: str) -> tuple[int, int]:
+    mults = DIFFICULTY_MULTIPLIERS.get(difficulty, DIFFICULTY_MULTIPLIERS["difficult"])
+    return round(user_damage * mults["user"]), round(agent_damage * mults["boss"])
+
 
 def _build_battle_system_prompt(agent: Agent, idea: str) -> str:
     return (
@@ -176,6 +190,30 @@ async def score_exchange(
         return MIN_DAMAGE + 12, None, MIN_DAMAGE + 8, None
 
 
+async def get_concession_message(agent: Agent, idea: str, user_message: str) -> str:
+    """
+    Generate a concession from the defeated boss acknowledging the player's winning argument.
+    Called when the player's attack reduces the boss's HP to 0.
+    """
+    provider, model = get_non_agent_model_config()
+    llm = get_llm(provider=provider, model_name=model, temperature=0.9)
+    prompt = (
+        f"You are {agent.name}, a debate critic with this persona: {agent.role_description}\n\n"
+        f'The debate topic was: "{idea}"\n\n'
+        f"The player just made this argument that defeated you:\n{user_message}\n\n"
+        f"Concede defeat in 1-2 sentences. Acknowledge the specific point in their argument that "
+        f"convinced or silenced you. Stay in character as {agent.name}. "
+        f"Vary your phrasing — do not always start with 'I concede' or 'You have defeated me'. "
+        f"Be genuine and specific about what persuaded you. Do not use markdown."
+    )
+    try:
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        return response.content.strip()
+    except Exception:
+        logger.warning("Concession message LLM call failed", exc_info=True)
+        return "I cannot refute that. You've bested me."
+
+
 async def get_defeat_reason(idea: str, user_message: str, agent_reply: str) -> str:
     """
     Generate a 1-2 sentence explanation of the specific flaw that cost the user the battle.
@@ -199,40 +237,164 @@ async def get_defeat_reason(idea: str, user_message: str, agent_reply: str) -> s
         return "Your argument failed to adequately counter the critic's challenge."
 
 
+async def generate_boss_summary(session: GauntletSession, boss: BattleBoss) -> str:
+    """One-sentence summary of the player's strongest point vs a single boss."""
+    name = boss.agent.name if boss.agent else f"Agent #{boss.agent_id}"
+    user_messages = [m for m in boss.messages if m.role == "user"]
+    if not user_messages:
+        # Boss was bypassed — no real transcript to summarise
+        return "This battle was skipped — no debate transcript recorded."
+
+    provider, model = get_non_agent_model_config()
+    llm = get_llm(provider=provider, model_name=model, temperature=0.5)
+    lines = []
+    for msg in sorted(boss.messages, key=lambda m: m.id):
+        speaker = "Player" if msg.role == "user" else name
+        lines.append(f"{speaker}: {msg.content}")
+    transcript = "\n".join(lines)
+    prompt = (
+        f'The player defended this idea: "{session.idea}"\n\n'
+        f"Debate transcript vs {name}:\n{transcript}\n\n"
+        f"In exactly one sentence, name the single strongest argument or point the player made "
+        f"in this conversation. Be specific — reference the actual content of what was said. "
+        f"Do not use markdown. Do not begin the sentence with 'The player'."
+    )
+    try:
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        return response.content.strip()
+    except Exception:
+        logger.warning("Boss summary LLM call failed", exc_info=True)
+        return "No summary available."
+
+
+async def generate_objections(session: GauntletSession, bosses: list[BattleBoss]) -> list[dict]:
+    """Grouped objections across all defeated bosses with best counterpoints."""
+    provider, model = get_non_agent_model_config()
+    llm = get_llm(provider=provider, model_name=model, temperature=0.7)
+
+    defeated = [b for b in bosses if b.status == "defeated"]
+    boss_names: list[str] = []
+    sections: list[str] = []
+    for boss in defeated:
+        name = boss.agent.name if boss.agent else f"Agent #{boss.agent_id}"
+        user_msgs = [m for m in boss.messages if m.role == "user"]
+        if not user_msgs:
+            # Boss was bypassed — no transcript to include
+            continue
+        boss_names.append(name)
+        lines = [f"=== {name} ==="]
+        for msg in sorted(boss.messages, key=lambda m: m.id):
+            speaker = "Player" if msg.role == "user" else name
+            lines.append(f"{speaker}: {msg.content}")
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return []
+
+    transcripts_text = "\n\n".join(sections)
+
+    prompt = (
+        f'The player defended this idea: "{session.idea}"\n\n'
+        f"They debated {len(boss_names)} critics with recorded transcripts: {', '.join(boss_names)}.\n\n"
+        f"FULL TRANSCRIPTS:\n{transcripts_text}\n\n"
+        f"Produce a JSON array of ALL distinct objections raised across all critics. "
+        f"Group near-identical objections together and list every critic who raised them. "
+        f"For each group, synthesize the player's strongest counterpoint across all conversations "
+        f"where that objection appeared. "
+        f"Use plain text only — no markdown, no asterisks, no dashes.\n\n"
+        f"Return ONLY a JSON array:\n"
+        f"[\n"
+        f'  {{\n'
+        f'    "objection": "Concise statement of the objection",\n'
+        f'    "raised_by": ["name1", "name2"],\n'
+        f'    "counterpoint": "Synthesis of the player\'s best counterpoint"\n'
+        f'  }}\n'
+        f"]\n\n"
+        f"Respond with ONLY the JSON array, no surrounding text."
+    )
+
+    try:
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        raw = response.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        result = json.loads(raw)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception:
+        logger.warning("Objections LLM call failed", exc_info=True)
+        return []
+
+
 async def generate_summary(session: GauntletSession, bosses: list[BattleBoss]) -> str:
     """
-    Generate a final synthesis of the idea after all battles are complete.
-    Concatenates defeated boss transcripts and asks the LLM to produce
-    the most robust version of the idea with all objections addressed.
+    Generate a structured JSON synthesis of all defeated-boss debates.
+
+    Returns a JSON string with shape:
+      { per_boss: [{name, summary}], objections: [{objection, raised_by, counterpoint}] }
+
+    All text fields are plain text — no markdown, asterisks, or pound signs.
     """
     provider, model = get_non_agent_model_config()
     llm = get_llm(provider=provider, model_name=model, temperature=0.7)
 
-    transcripts = []
-    for boss in bosses:
-        if boss.status != "defeated":
-            continue
-        agent_name = boss.agent.name if boss.agent else f"Agent #{boss.agent_id}"
-        lines = [f"=== Battle vs {agent_name} ==="]
+    defeated = [b for b in bosses if b.status == "defeated"]
+    boss_names: list[str] = []
+    sections: list[str] = []
+    for boss in defeated:
+        name = boss.agent.name if boss.agent else f"Agent #{boss.agent_id}"
+        user_msgs = [m for m in boss.messages if m.role == "user"]
+        if not user_msgs:
+            continue  # bypass — no transcript, skip to avoid hallucination
+        boss_names.append(name)
+        lines = [f"=== {name} ==="]
         for msg in sorted(boss.messages, key=lambda m: m.id):
-            speaker = "User" if msg.role == "user" else agent_name
+            speaker = "Player" if msg.role == "user" else name
             lines.append(f"{speaker}: {msg.content}")
-        transcripts.append("\n".join(lines))
+        sections.append("\n".join(lines))
 
-    full_transcript = "\n\n".join(transcripts)
+    if not sections:
+        return json.dumps({"per_boss": [], "objections": []})
+
+    transcripts_text = "\n\n".join(sections)
 
     summary_prompt = (
-        f'The user defended this idea: "{session.idea}"\n\n'
-        f"They had the following debate transcripts with {len(transcripts)} critics:\n\n"
-        f"{full_transcript}\n\n"
-        f"Based on all of these debates:\n"
-        f"1. Write the most robust, well-defended version of the idea that incorporates "
-        f"   all valid objections and steelmans the strongest counterarguments.\n"
-        f"2. List the 3-5 strongest objections that were raised.\n"
-        f"3. For each objection, explain how the user's argument addressed (or failed to address) it.\n\n"
-        f"Format your response clearly with sections: "
-        f"'The Robust Idea', 'Key Objections & Responses'."
+        f'The player defended this idea: "{session.idea}"\n\n'
+        f"They debated {len(boss_names)} critics with recorded transcripts: {', '.join(boss_names)}.\n\n"
+        f"FULL TRANSCRIPTS:\n{transcripts_text}\n\n"
+        f"Produce a JSON object with this exact structure. "
+        f"Use plain text only in all string values — no markdown, no asterisks, no pound signs, no bullet dashes:\n\n"
+        f'{{\n'
+        f'  "per_boss": [\n'
+        f'    {{"name": "critic name", "summary": "One sentence describing the strongest argument the player made in this specific conversation."}}\n'
+        f'  ],\n'
+        f'  "objections": [\n'
+        f'    {{\n'
+        f'      "objection": "Concise statement of the objection or criticism raised",\n'
+        f'      "raised_by": ["name1", "name2"],\n'
+        f'      "counterpoint": "Synthesis of the strongest counterpoint the player made across all conversations where this objection appeared."\n'
+        f'    }}\n'
+        f'  ]\n'
+        f'}}\n\n'
+        f"Rules:\n"
+        f'- "per_boss" must have one entry per defeated critic, in transcript order.\n'
+        f'- "objections" must cover ALL distinct objections raised. Group near-identical objections together '
+        f'  and list every critic who raised them in "raised_by".\n'
+        f'- "counterpoint" should synthesize the best rebuttal the player offered across all turns and conversations '
+        f"  where that objection appeared — do not limit to a single exchange.\n"
+        f"- Do not omit any objection, even if the player failed to address it well.\n"
+        f"- Do not use markdown formatting anywhere in the text fields.\n"
+        f"- Respond with ONLY the JSON object, no surrounding text."
     )
 
-    response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
-    return response.content.strip()
+    try:
+        response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
+        raw = response.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        json.loads(raw)  # validate it parses
+        return raw
+    except Exception:
+        logger.warning("Summary LLM call failed or returned non-JSON", exc_info=True)
+        return json.dumps({"per_boss": [], "objections": [], "error": "Summary generation failed."})

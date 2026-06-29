@@ -108,8 +108,9 @@ export default function BossInterstitialScreen() {
                 fontSize: "0.65rem",
                 color: "var(--nes-gray)",
                 maxWidth: 400,
-                marginTop: 12,
+                margin: "12px auto 0",
                 lineHeight: 2,
+                textAlign: "center",
               }}
             >
               {boss.agent.role_description}

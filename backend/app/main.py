@@ -49,6 +49,16 @@ if inspector.has_table("megaman_sessions") and not inspector.has_table(
         conn.execute(text("ALTER TABLE megaman_sessions RENAME TO gauntlet_sessions"))
         conn.commit()
 
+if inspector.has_table("gauntlet_sessions"):
+    gs_columns = [c["name"] for c in inspector.get_columns("gauntlet_sessions")]
+    if "difficulty" not in gs_columns:
+        print("--- MIGRATION: Adding 'difficulty' column to 'gauntlet_sessions' table ---")
+        with engine.connect() as conn:
+            conn.execute(
+                text("ALTER TABLE gauntlet_sessions ADD COLUMN difficulty VARCHAR DEFAULT 'difficult' NOT NULL")
+            )
+            conn.commit()
+
 if inspector.has_table("battle_bosses"):
     bb_columns = [c["name"] for c in inspector.get_columns("battle_bosses")]
     if "provider_override" not in bb_columns:

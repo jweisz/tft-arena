@@ -5,6 +5,8 @@ import {
   type ProviderInfo,
   type AppSettings,
 } from "../lib/api";
+import { useAudioStore } from "../store/audioStore";
+import { TRACKS } from "../hooks/useBgMusic";
 
 const selectStyle: React.CSSProperties = {
   background: "var(--nes-darkgray)",
@@ -111,6 +113,7 @@ function KeyInput({
 }
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { manualTrackId, setManualTrack } = useAudioStore();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     non_agent_provider: null,
@@ -253,6 +256,30 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             [ESC]
           </button>
         </div>
+
+        {/* BGM Track — always visible, no loading required */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "var(--nes-yellow)", marginBottom: 4 }}>
+              BGM TRACK
+            </div>
+            <div style={{ fontSize: "0.55rem", color: "var(--nes-gray)", lineHeight: 1.8 }}>
+              AUTO plays a different track per screen. Override to lock a specific track.
+            </div>
+          </div>
+          <select
+            style={selectStyle}
+            value={manualTrackId ?? ""}
+            onChange={(e) => setManualTrack(e.target.value || null)}
+          >
+            <option value="">AUTO (per screen)</option>
+            {TRACKS.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ borderTop: "2px solid rgba(255,255,255,0.08)" }} />
 
         {loading ? (
           <p style={{ fontSize: "0.65rem", color: "var(--nes-gray)" }}>

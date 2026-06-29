@@ -76,7 +76,7 @@ function TypewriterText({
 }
 
 type Message = {
-  role: "user" | "agent";
+  role: "user" | "agent" | "system";
   content: string;
   damage?: number | null;
   damage_reason?: string | null;
@@ -257,6 +257,33 @@ export default function BattleScreen() {
     setInput("");
     setSending(true);
     userScrolledUpRef.current = false; // snap back so user sees their message + reply
+
+    if (content === "/bypass") {
+      try {
+        const result = await gauntlet.bypassBattle(session.id, boss.id);
+        setAgentHp(0);
+        triggerDamageEffect("boss", result.user_damage);
+        pendingPlayerHpRef.current = result.user_hp;
+        pendingPlayerDamageRef.current = 0;
+        pendingAgentDamageRef.current = null;
+        pendingAgentDamageReasonRef.current = null;
+        pendingOutcomeRef.current = { winner: "user" };
+        setLiveHp(boss.id, result.user_hp, 0);
+        setLatestAgentText(result.agent_reply);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "agent",
+            content: `[BYPASS ERROR: ${e instanceof Error ? e.message : "unknown"}]`,
+          },
+        ]);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     attack();
 
     setMessages((prev) => [...prev, { role: "user", content }]);
@@ -301,6 +328,12 @@ export default function BattleScreen() {
           winner: result.winner as "user" | "agent",
           defeatReason: result.defeat_reason ?? undefined,
         };
+        if (result.winner === "user") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "system", content: `★ ${boss.agent.name} has been defeated!` },
+          ]);
+        }
       }
 
       setLatestAgentText(result.agent_reply);
@@ -476,7 +509,7 @@ export default function BattleScreen() {
       >
         {messages.length === 0 && !latestAgentText && (
           <div
-            className="dialog-box"
+            className={`dialog-box${openingLoading ? " dialog-box--active" : ""}`}
             style={{ color: "var(--nes-gray)", fontSize: "0.7rem" }}
           >
             {openingLoading
@@ -485,7 +518,31 @@ export default function BattleScreen() {
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) => {
+          if (msg.role === "system") {
+            return (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  margin: "4px 0",
+                  opacity: 0.9,
+                  animation: "fade-in 400ms ease",
+                }}
+              >
+                <div style={{ flex: 1, height: 1, background: "var(--nes-yellow)", opacity: 0.35 }} />
+                <span style={{ color: "var(--nes-yellow)", whiteSpace: "nowrap", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: "1rem" }}>⭐</span>
+                  <span style={{ fontSize: "0.6rem" }}>{msg.content.replace(/^★ /, "")}</span>
+                </span>
+                <div style={{ flex: 1, height: 1, background: "var(--nes-yellow)", opacity: 0.35 }} />
+              </div>
+            );
+          }
+
+          return (
           <div
             key={i}
             style={{
@@ -584,7 +641,8 @@ export default function BattleScreen() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Streaming typewriter reply */}
         {latestAgentText !== null && (
@@ -593,7 +651,7 @@ export default function BattleScreen() {
               {boss.agent.emoji}
             </div>
             <div
-              className="dialog-box"
+              className="dialog-box dialog-box--active"
               style={{
                 maxWidth: "75%",
                 fontSize: "0.75rem",

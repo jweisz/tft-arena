@@ -14,13 +14,14 @@ const SAMPLE_IDEAS = [
 export default function IdeaEntryScreen() {
   const navigate = useNavigate();
   const { blip, attack } = useChiptune();
-  const { setPendingIdea } = useGameStore();
+  const { setPendingIdea, clearSession } = useGameStore();
 
   const [idea, setIdea] = useState("");
 
   const handleContinue = () => {
     if (!idea.trim()) return;
     attack();
+    clearSession();
     setPendingIdea(idea.trim());
     navigate("/choose-challengers");
   };

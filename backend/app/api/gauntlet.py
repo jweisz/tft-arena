@@ -12,7 +12,7 @@ Routes:
 import json
 import random
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -23,8 +23,12 @@ from ..core.security import resolve_request_auth_context
 from ..services.gauntlet import (
     get_agent_reply,
     score_exchange,
+    get_concession_message,
     get_defeat_reason,
     generate_summary,
+    generate_boss_summary,
+    generate_objections,
+    apply_difficulty,
     MAX_HP,
 )
 
@@ -78,6 +82,7 @@ class SessionOut(BaseModel):
     idea: str
     agent_ids: str
     status: str
+    difficulty: str
     summary: Optional[str]
     created_at: datetime
     bosses: List[BattleBossOut] = []
@@ -95,10 +100,15 @@ class CreateSessionRequest(BaseModel):
     idea: str
     agent_ids: List[int]  # exactly 8
     model_overrides: Optional[dict] = None  # {slot_index: {provider, model}}
+    difficulty: str = "difficult"  # "easy" | "normal" | "difficult"
 
 
 class SendMessageRequest(BaseModel):
     content: str
+
+
+class StoreSummaryRequest(BaseModel):
+    data: Optional[str] = None  # pre-assembled JSON string; if set, stored directly
 
 
 class BattleTurnOut(BaseModel):
@@ -159,12 +169,16 @@ def create_session(
         if not db.query(Agent).filter(Agent.id == aid).first():
             raise HTTPException(status_code=404, detail=f"Agent {aid} not found")
 
+    valid_difficulties = {"easy", "normal", "difficult"}
+    difficulty = body.difficulty if body.difficulty in valid_difficulties else "difficult"
+
     user_id = _get_user_id(request)
     session = GauntletSession(
         user_id=user_id,
         idea=body.idea.strip(),
         agent_ids=json.dumps(body.agent_ids),
         status="active",
+        difficulty=difficulty,
     )
     db.add(session)
     db.flush()  # get session.id
@@ -206,8 +220,10 @@ def get_session(session_id: int, request: Request, db: Session = Depends(get_db)
     session = (
         db.query(GauntletSession)
         .options(
-            joinedload(GauntletSession.bosses).joinedload(BattleBoss.agent),
-            joinedload(GauntletSession.bosses).joinedload(BattleBoss.messages),
+            selectinload(GauntletSession.bosses).options(
+                joinedload(BattleBoss.agent),
+                selectinload(BattleBoss.messages),
+            )
         )
         .filter(GauntletSession.id == session_id, GauntletSession.user_id == user_id)
         .first()
@@ -352,6 +368,18 @@ async def battle_message(
         agent_reply=agent_reply,
     )
 
+    # Apply difficulty multipliers to raw scores
+    user_damage, agent_damage = apply_difficulty(
+        user_damage, agent_damage, session.difficulty or "difficult"
+    )
+
+    # If the player's attack kills the boss, replace the agent's reply with a concession
+    # and cancel their counter-attack — a defeated boss doesn't get a last shot.
+    if boss.agent_hp - user_damage <= 0:
+        agent_reply = await get_concession_message(boss.agent, session.idea, user_content)
+        agent_damage = 0
+        agent_damage_reason = None
+
     # Update user message with damage dealt to agent
     user_msg.damage = user_damage
     user_msg.damage_reason = user_damage_reason
@@ -444,16 +472,124 @@ def retry_battle(
     return {"ok": True}
 
 
+@router.post(
+    "/sessions/{session_id}/battles/{boss_id}/bypass", response_model=BattleTurnOut
+)
+def bypass_battle(
+    session_id: int,
+    boss_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Dev shortcut: instantly defeat the current boss (sets agent HP to 0)."""
+    user_id = _get_user_id(request)
+    session = (
+        db.query(GauntletSession)
+        .filter(GauntletSession.id == session_id, GauntletSession.user_id == user_id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    boss = (
+        db.query(BattleBoss)
+        .filter(BattleBoss.id == boss_id, BattleBoss.session_id == session_id)
+        .first()
+    )
+    if not boss:
+        raise HTTPException(status_code=404, detail="Battle not found")
+    if boss.status == "defeated":
+        raise HTTPException(status_code=400, detail="This boss is already defeated")
+
+    user_damage = boss.agent_hp
+    boss.agent_hp = 0
+    boss.status = "defeated"
+
+    db.commit()
+
+    return BattleTurnOut(
+        agent_reply="*stares blankly, then collapses* ...you win this time.",
+        user_damage=user_damage,
+        user_damage_reason="bypass",
+        agent_damage=0,
+        agent_damage_reason=None,
+        user_hp=boss.user_hp,
+        agent_hp=0,
+        battle_over=True,
+        winner="user",
+        defeat_reason=None,
+    )
+
+
+@router.post("/sessions/{session_id}/summary/boss/{boss_id}")
+async def boss_summary_endpoint(
+    session_id: int,
+    boss_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Generate a one-sentence summary for a single defeated boss battle."""
+    user_id = _get_user_id(request)
+    session = (
+        db.query(GauntletSession)
+        .filter(GauntletSession.id == session_id, GauntletSession.user_id == user_id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    boss = (
+        db.query(BattleBoss)
+        .options(joinedload(BattleBoss.agent), joinedload(BattleBoss.messages))
+        .filter(BattleBoss.id == boss_id, BattleBoss.session_id == session_id)
+        .first()
+    )
+    if not boss or boss.status != "defeated":
+        raise HTTPException(status_code=404, detail="Defeated battle not found")
+    name = boss.agent.name if boss.agent else f"Agent #{boss.agent_id}"
+    summary = await generate_boss_summary(session, boss)
+    return {"name": name, "summary": summary}
+
+
+@router.post("/sessions/{session_id}/summary/objections")
+async def objections_summary_endpoint(
+    session_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Generate grouped objections synthesis across all defeated bosses."""
+    user_id = _get_user_id(request)
+    session = (
+        db.query(GauntletSession)
+        .options(
+            selectinload(GauntletSession.bosses).options(
+                joinedload(BattleBoss.agent),
+                selectinload(BattleBoss.messages),
+            )
+        )
+        .filter(GauntletSession.id == session_id, GauntletSession.user_id == user_id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    objections = await generate_objections(session, session.bosses)
+    return {"objections": objections}
+
+
 @router.post("/sessions/{session_id}/summary")
 async def create_summary(
-    session_id: int, request: Request, db: Session = Depends(get_db)
+    session_id: int,
+    request: Request,
+    body: StoreSummaryRequest = StoreSummaryRequest(),
+    db: Session = Depends(get_db),
 ):
     user_id = _get_user_id(request)
     session = (
         db.query(GauntletSession)
         .options(
-            joinedload(GauntletSession.bosses).joinedload(BattleBoss.agent),
-            joinedload(GauntletSession.bosses).joinedload(BattleBoss.messages),
+            selectinload(GauntletSession.bosses).options(
+                joinedload(BattleBoss.agent),
+                selectinload(BattleBoss.messages),
+            )
         )
         .filter(GauntletSession.id == session_id, GauntletSession.user_id == user_id)
         .first()
@@ -465,7 +601,11 @@ async def create_summary(
     if not defeated:
         raise HTTPException(status_code=400, detail="No defeated bosses yet")
 
-    summary_text = await generate_summary(session, session.bosses)
+    if body.data:
+        summary_text = body.data
+    else:
+        summary_text = await generate_summary(session, session.bosses)
+
     session.summary = summary_text
     session.status = "complete"
     db.commit()

@@ -183,7 +183,7 @@ body::after {
   position: relative;
 }
 
-.dialog-box::before {
+.dialog-box--active::before {
   content: "▶";
   position: absolute;
   bottom: 8px;

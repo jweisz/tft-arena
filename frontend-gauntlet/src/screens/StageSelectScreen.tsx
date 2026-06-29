@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../store/gameStore";
 import { useChiptune } from "../hooks/useChiptune";
 import { useGridCursor } from "../hooks/useGridCursor";
+import { gauntlet } from "../lib/api";
 import type { BattleBossOut } from "../lib/api";
 
 const CENTER_POS = 4;
@@ -70,27 +71,42 @@ function BossCell({
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
+            background: "rgba(0,0,0,0.88)",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
+            gap: 6,
             zIndex: 2,
           }}
         >
           <span style={{ fontSize: "0.75rem", color: "var(--nes-gray)" }}>
             DEFEATED
           </span>
+          <span
+            style={{
+              fontSize: "0.55rem",
+              color: "var(--nes-gray)",
+              opacity: 0.6,
+              textAlign: "center",
+              padding: "0 6px",
+              lineHeight: 1.5,
+            }}
+          >
+            {boss.agent.name}
+          </span>
         </div>
       )}
-      <div
-        className={defeated ? "sprite sprite--defeated" : "sprite sprite--idle"}
-        style={{ fontSize: 36 }}
-      >
-        {boss.agent.emoji}
-      </div>
-      <div style={{ fontSize: "0.8rem", lineHeight: 1.6 }}>
-        {boss.agent.name}
-      </div>
+      {!defeated && (
+        <>
+          <div className="sprite sprite--idle" style={{ fontSize: 36 }}>
+            {boss.agent.emoji}
+          </div>
+          <div style={{ fontSize: "0.8rem", lineHeight: 1.6 }}>
+            {boss.agent.name}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -150,12 +166,67 @@ function CenterCell({
 
 export default function StageSelectScreen() {
   const navigate = useNavigate();
-  const { session } = useGameStore();
+  const { session, setSession } = useGameStore();
   const { blip, unlock } = useChiptune();
+
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdValue, setCmdValue] = useState("/");
+  const [cmdRunning, setCmdRunning] = useState(false);
+  const cmdInputRef = useRef<HTMLInputElement>(null);
+  // Prevents a slow mount-fetch from overwriting a bypass result that arrived later.
+  const bypassedRef = useRef(false);
 
   const bosses = session?.bosses ?? [];
   const allDefeated =
     bosses.length > 0 && bosses.every((b) => b.status === "defeated");
+
+  // Open command panel on "/" keypress (when panel is not already open)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (cmdOpen || cmdRunning) return;
+      if (e.key === "/" && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        setCmdValue("/");
+        setCmdOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [cmdOpen, cmdRunning]);
+
+  // Focus the input whenever the panel opens
+  useEffect(() => {
+    if (cmdOpen) cmdInputRef.current?.focus();
+  }, [cmdOpen]);
+
+  const closeCmd = () => {
+    setCmdOpen(false);
+    setCmdValue("/");
+  };
+
+  const handleCommand = async () => {
+    const cmd = cmdValue.trim();
+    closeCmd();
+    if (cmd !== "/bypass" || !session) return;
+
+    setCmdRunning(true);
+    bypassedRef.current = true;
+    try {
+      const toBypass = bosses.filter((b) => b.status !== "defeated");
+      for (const boss of toBypass) {
+        await gauntlet.bypassBattle(session.id, boss.id);
+      }
+      // Patch locally first so allDefeated flips immediately without a round-trip.
+      setSession({
+        ...session,
+        bosses: session.bosses.map((b) => ({ ...b, status: "defeated" as const, agent_hp: 0 })),
+      });
+      // Confirm with server in background.
+      gauntlet.getSession(session.id).then(setSession).catch(() => {});
+    } finally {
+      setCmdRunning(false);
+    }
+  };
 
   const handleGridSelect = (pos: number) => {
     if (!session) return;
@@ -180,13 +251,21 @@ export default function StageSelectScreen() {
   const { cursor } = useGridCursor({
     onSelect: handleGridSelect,
     onMove: blip,
-    enabled: !!session,
+    enabled: !!session && !cmdOpen && !cmdRunning,
     skipPositions: allDefeated ? [] : [CENTER_POS],
   });
 
   useEffect(() => {
-    if (!session) navigate("/", { replace: true });
-  }, [session, navigate]);
+    if (!session) {
+      navigate("/", { replace: true });
+      return;
+    }
+    // Re-fetch on mount so boss statuses are fresh (avoids stale store after battles).
+    // Guard: don't overwrite a bypass result that arrived after this request started.
+    gauntlet.getSession(session.id).then((s) => {
+      if (!bypassedRef.current) setSession(s);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!session) return null;
 
@@ -267,8 +346,58 @@ export default function StageSelectScreen() {
       </div>
 
       <p style={{ fontSize: "0.65rem", color: "var(--nes-gray)" }}>
-        {bosses.filter((b) => b.status === "defeated").length}/8 DEFEATED
+        {cmdRunning
+          ? "BYPASSING..."
+          : `${bosses.filter((b) => b.status === "defeated").length}/8 DEFEATED`}
       </p>
+
+      {/* Command panel — fixed bottom-right, opens on "/" */}
+      {cmdOpen && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 1000,
+            background: "var(--nes-darkgray)",
+            border: "3px solid var(--nes-cyan)",
+            boxShadow: "4px 4px 0 var(--nes-cyan)",
+            padding: "10px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            minWidth: 220,
+          }}
+        >
+          <div style={{ fontSize: "0.55rem", color: "var(--nes-cyan)" }}>
+            COMMAND
+          </div>
+          <input
+            ref={cmdInputRef}
+            className="pixel-input"
+            value={cmdValue}
+            onChange={(e) => setCmdValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.nativeEvent.stopImmediatePropagation();
+                void handleCommand();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.nativeEvent.stopImmediatePropagation();
+                closeCmd();
+              }
+            }}
+            style={{ fontSize: "0.7rem", padding: "6px 8px", width: "100%" }}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <div style={{ fontSize: "0.5rem", color: "var(--nes-gray)" }}>
+            ENTER to run · ESC to cancel
+          </div>
+        </div>
+      )}
     </div>
   );
 }
