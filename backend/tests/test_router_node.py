@@ -104,7 +104,7 @@ async def test_router_replenishes_budget_to_agent_cap(monkeypatch):
                 "token_budget": 5,
             }
         ],
-        "agent_budgets": {"Analyst": 1},
+        "agent_budgets": {"Analyst": 3},
         "agent_statuses": {},
         "next_speakers": [],
         "interrupted": False,

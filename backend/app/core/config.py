@@ -44,9 +44,7 @@ def _config() -> dict:
     pip-installed (e.g. by the overlay). Edits require a restart.
     """
     try:
-        raw = resources.files("app").joinpath("config.toml").read_text(
-            encoding="utf-8"
-        )
+        raw = resources.files("app").joinpath("config.toml").read_text(encoding="utf-8")
         return tomllib.loads(raw)
     except Exception:
         return {}

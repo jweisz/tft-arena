@@ -25,35 +25,18 @@ TFT Arena provides:
 **Prerequisites**:
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package and project manager
-- [mise](https://mise.jdx.dev/getting-started.html) — task runner (Option A)
+- [mise](https://mise.jdx.dev/getting-started.html) — task runner
 - Node 20+ and npm
-- [Docker + Docker Compose](https://docs.docker.com/get-started/get-docker/) — containerized workflow (Option B)
-
-Choose one path:
-
-### Option A: mise runner (quick local workflow)
+- tmux
 
 ```bash
-mise run app
+mise run install
+mise run start
 ```
 
-This installs dependencies on first run, then starts backend and frontend together.
+`install` installs all backend and frontend dependencies. `start` opens a tmux session with backend and frontend running side by side.
 
-### Option B: Docker (fastest containerized run)
-
-```bash
-mise run docker-up
-```
-
-To stop: `mise run docker-down`
-
-Linux Docker Engine users must use the override directly:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.linux.yml watch
-```
-
-### Option C: Manual local dev (backend + frontend)
+### Manual start (without mise)
 
 1. Start backend:
 
@@ -63,7 +46,7 @@ uv sync --extra dev
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-1. In a new terminal, start frontend:
+2. In a new terminal, start frontend:
 
 ```bash
 cd frontend
@@ -81,46 +64,18 @@ npm run dev
 
 - `backend/`: FastAPI API, LangGraph orchestration, SQLAlchemy models, pytest tests.
 - `frontend/`: React client, Zustand state, Vite tooling, Vitest tests.
-- `docker-compose.yml`: Docker dev workflow with sync/watch for hot reload.
-- `docker-compose.linux.yml`: Linux host-gateway override for `host.docker.internal`.
-- `mise.toml`: convenience tasks for local app startup, Docker lifecycle, and tests.
+- `mise.toml`: task runner shortcuts for install, start, lint, format, and test.
 
 ## Development Workflows
 
-Use Quick Start to launch the app. This section is a command reference for common dev tasks.
-
-### Docker reference
-
-Dev watch mode:
+### mise task reference
 
 ```bash
-docker compose watch
-```
-
-Build and run once:
-
-```bash
-docker compose up --build
-```
-
-Stop and clean up:
-
-```bash
-docker compose down
-```
-
-### Local workflows
-
-Optional task-runner shortcuts (if you use mise):
-
-```bash
-mise run install      # install all dependencies
-mise run app          # install deps + start backend + frontend
-mise run app-backend  # backend only
-mise run app-frontend # frontend only
-mise run test         # backend tests
-mise run docker-up    # docker compose watch
-mise run docker-down  # docker compose down
+mise run install      # install all dependencies (backend + frontend)
+mise run start        # start backend + frontend in a tmux split
+mise run lint         # ruff + eslint
+mise run format       # ruff format + prettier
+mise run test         # backend pytest suite
 ```
 
 ## API and Health Endpoints
@@ -156,8 +111,7 @@ npm run build
 ## Troubleshooting
 
 1. Frontend loads but no data appears: confirm backend is running on port `8000`, then check `http://localhost:8000/api/health`.
-2. Docker on Linux cannot reach host services (for example Ollama): use `docker-compose.linux.yml` override with `docker compose -f docker-compose.yml -f docker-compose.linux.yml watch`.
-3. Dependency issues after updates: rerun `uv sync --extra dev` in `backend/` and `npm install` in `frontend/`.
+2. Dependency issues after updates: rerun `uv sync --extra dev` in `backend/` and `npm install` in `frontend/`.
 
 ## Database Inspection
 
@@ -186,7 +140,7 @@ EOF
 
 Contributions are welcome. If you want to help, a great starting point is:
 
-1. Run the app locally (Docker or local workflow).
+1. Run the app locally with `mise run start`.
 2. Run backend and frontend tests.
 3. Open a focused PR with clear reproduction steps for fixes.
 

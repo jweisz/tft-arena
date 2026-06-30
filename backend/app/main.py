@@ -53,10 +53,14 @@ if inspector.has_table("megaman_sessions") and not inspector.has_table(
 if inspector.has_table("gauntlet_sessions"):
     gs_columns = [c["name"] for c in inspector.get_columns("gauntlet_sessions")]
     if "difficulty" not in gs_columns:
-        print("--- MIGRATION: Adding 'difficulty' column to 'gauntlet_sessions' table ---")
+        print(
+            "--- MIGRATION: Adding 'difficulty' column to 'gauntlet_sessions' table ---"
+        )
         with engine.connect() as conn:
             conn.execute(
-                text("ALTER TABLE gauntlet_sessions ADD COLUMN difficulty VARCHAR DEFAULT 'difficult' NOT NULL")
+                text(
+                    "ALTER TABLE gauntlet_sessions ADD COLUMN difficulty VARCHAR DEFAULT 'difficult' NOT NULL"
+                )
             )
             conn.commit()
 
