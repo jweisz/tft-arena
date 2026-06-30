@@ -6,13 +6,24 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 
+from . import config
+
 # In production this should be stored safely in env vars
-SECRET_KEY = os.environ.get(
-    "JWT_SECRET_KEY", "super-secret-tft-arena-key-for-local-dev"
-)
+_DEFAULT_SECRET_KEY = "super-secret-tft-arena-key-for-local-dev"
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", _DEFAULT_SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 ALLOWED_USER_EMAIL = os.environ.get("ALLOWED_USER_EMAIL", "")
+
+# Refuse to start with the built-in dev secret whenever auth is actually
+# enforced (hosted deployment or a single-email allowlist). The default secret
+# is only acceptable for fully-open local development.
+if SECRET_KEY == _DEFAULT_SECRET_KEY and (config.is_hosted() or ALLOWED_USER_EMAIL):
+    raise RuntimeError(
+        "JWT_SECRET_KEY must be set to a strong, unique value when running in "
+        "hosted mode or with an ALLOWED_USER_EMAIL allowlist. Refusing to start "
+        "with the built-in development secret."
+    )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 

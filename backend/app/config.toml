@@ -1,0 +1,9 @@
+# Static, checked-in configuration for the backend.
+#
+# This is for non-secret, non-per-user knobs. Secrets and per-deployment infra
+# (API keys, JWT secret, DATABASE_URL, CORS, DEPLOYMENT_MODE) stay in env vars;
+# user-editable settings (per-agent model, keys) live in the database.
+
+[branding]
+# Display name shown in the UI. Rebrand here.
+name = "TFT Arena"

@@ -12,7 +12,8 @@ from app.api.agents import router as agents_router
 from app.api.avatars import router as avatars_router
 from app.api.messages import router as messages_router
 from app.api.providers import router as providers_router
-from app.api.gauntlet import router as gauntlet_router
+from app.api.config import router as config_router
+from app.core.config import allowed_origins
 
 # Create tables on startup if they don't exist
 Base.metadata.create_all(bind=engine)
@@ -112,17 +113,13 @@ if "non_agent_model" not in settings_columns:
         )
         conn.commit()
 
-app = FastAPI(title="tft-arena Backend", version="1.0.0")
+app = FastAPI(title="TFT Arena Backend", version="1.0.0")
 
-# Configure CORS for Vite development server
+# Configure CORS. Origins come from ALLOWED_ORIGINS (comma-separated) in
+# production; defaults to the local Vite dev servers when unset.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -153,13 +150,13 @@ def health_check():
     return _health_payload()
 
 
-app.include_router(rooms_router)
 app.include_router(settings_router)
 app.include_router(auth_router)
-app.include_router(chat_router)
-app.include_router(control_router)
 app.include_router(agents_router)
 app.include_router(avatars_router)
-app.include_router(messages_router)
 app.include_router(providers_router)
-app.include_router(gauntlet_router)
+app.include_router(config_router)
+app.include_router(rooms_router)
+app.include_router(chat_router)
+app.include_router(control_router)
+app.include_router(messages_router)

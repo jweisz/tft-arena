@@ -11,6 +11,15 @@ DB_FILE = DATA_DIR / "tft_arena.db"
 DEFAULT_URL = f"sqlite:///{DB_FILE}"
 DATABASE_URL = os.environ.get("DATABASE_URL", DEFAULT_URL)
 
+# Managed Postgres providers (Render, etc.) hand out "postgresql://" / "postgres://"
+# URLs, which SQLAlchemy maps to the psycopg2 driver. We standardize on psycopg
+# v3, so normalize to the explicit "+psycopg" dialect. No effect on the sqlite
+# self-host default.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+
 engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}

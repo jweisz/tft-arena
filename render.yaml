@@ -1,0 +1,53 @@
+# Render blueprint for a SELF-HOST (BYO-key) Idea Gauntlet deployment.
+#
+# This is the public, single-user / small-audience setup: no billing, no
+# multi-user auth. Provide your own LLM key(s). For the paid hosted arcade
+# (credits, Stripe, Google sign-in, spend cap) use the private overlay repo's
+# render.yaml instead.
+
+databases:
+  - name: tft-arena-db
+    databaseName: tft_arena
+    user: tft_arena
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: tft-arena-api
+    runtime: python
+    rootDir: backend
+    plan: starter
+    buildCommand: pip install . psycopg[binary]
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DEPLOYMENT_MODE
+        value: self_host
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tft-arena-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: https://your-frontend-domain
+      # Optional: lock to a single Google account (set both to enable JWT auth).
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_USER_EMAIL
+        sync: false
+      # Provide at least one LLM key, or enter keys in the in-app Settings modal.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  - type: web
+    name: tft-arena-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://your-api-domain
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

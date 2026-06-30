@@ -3,8 +3,12 @@ from sqlalchemy.orm import Session
 from ..models import schema
 from ..models.db import get_db
 from ..core.llm import invalidate_settings_cache
+from ..core.deps import get_app_config
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
+
+_API_KEY_FIELDS = {"openai_api_key", "anthropic_api_key", "google_api_key"}
+_MODEL_FIELDS = {"non_agent_provider", "non_agent_model"}
 
 
 # Global settings for the single authorized user
@@ -27,12 +31,24 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.post("/")
-def update_settings(settings_in: dict, db: Session = Depends(get_db)):
+def update_settings(
+    settings_in: dict,
+    db: Session = Depends(get_db),
+    cfg: dict = Depends(get_app_config),
+):
     settings = db.query(schema.GlobalSettings).first()
     if not settings:
         # Assuming single user system for v1
         settings = schema.GlobalSettings()
         db.add(settings)
+
+    # Defense-in-depth: in hosted mode the overlay disables these flags, so the
+    # server silently ignores attempts to set API keys / model overrides even if
+    # a request bypasses the (hidden) UI.
+    if not cfg.get("show_api_key_settings", True):
+        settings_in = {k: v for k, v in settings_in.items() if k not in _API_KEY_FIELDS}
+    if not cfg.get("show_model_selection", True):
+        settings_in = {k: v for k, v in settings_in.items() if k not in _MODEL_FIELDS}
 
     if "openai_api_key" in settings_in:
         settings.openai_api_key = settings_in["openai_api_key"]

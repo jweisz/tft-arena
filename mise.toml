@@ -7,62 +7,44 @@
 
 # ── Start ─────────────────────────────────────────────────────
 
-[tasks.tft]
-description = "Local: backend + TFT frontend-arena in a tmux split (run 'mise run install' first)"
+[tasks.dev]
+description = "Local: backend + frontend in a tmux split (run 'mise run install' first)"
 run = """
-tmux kill-session -t tft 2>/dev/null || true
-tmux new-session -d -s tft -c "$PWD"
-tmux send-keys -t tft 'cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000' Enter
-tmux split-window -h -t tft -c "$PWD"
-tmux send-keys -t tft 'cd frontend-arena && npm run dev' Enter
-exec tmux attach-session -t tft
+tmux kill-session -t arena 2>/dev/null || true
+tmux new-session -d -s arena -c "$PWD"
+tmux send-keys -t arena 'cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000' Enter
+tmux split-window -h -t arena -c "$PWD"
+tmux send-keys -t arena 'cd frontend && npm run dev' Enter
+exec tmux attach-session -t arena
 """
 
-[tasks.tft-docker]
-description = "Docker: backend + TFT frontend-arena (compose watch with file sync)"
-run = "docker compose --profile tft watch"
-
-[tasks.gauntlet]
-description = "Local: backend + Gauntlet frontend in a tmux split (run 'mise run install' first)"
-run = """
-tmux kill-session -t gauntlet 2>/dev/null || true
-tmux new-session -d -s gauntlet -c "$PWD"
-tmux send-keys -t gauntlet 'cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000' Enter
-tmux split-window -h -t gauntlet -c "$PWD"
-tmux send-keys -t gauntlet 'cd frontend-gauntlet && npm run dev' Enter
-exec tmux attach-session -t gauntlet
-"""
-
-[tasks.gauntlet-docker]
-description = "Docker: backend + Gauntlet frontend (compose watch with file sync)"
-run = "docker compose --profile gauntlet watch"
+[tasks.dev-docker]
+description = "Docker: backend + frontend (compose watch with file sync)"
+run = "docker compose watch"
 
 # ── Setup ─────────────────────────────────────────────────────
 
 [tasks.install]
-description = "Install all dependencies (backend + both frontend-arenas)"
+description = "Install all dependencies (backend + frontend)"
 run = """
 uv sync --extra dev --project backend
-npm install --prefix frontend-arena
-npm install --prefix frontend-gauntlet
+npm install --prefix frontend
 """
 
 # ── Lint & Format ─────────────────────────────────────────────
 
 [tasks.lint]
-description = "Lint backend (ruff) and both frontend-arenas (eslint)"
+description = "Lint backend (ruff) and frontend (eslint)"
 run = """
 uv run ruff check . --project backend
-npm run lint --prefix frontend-arena
-npm run lint --prefix frontend-gauntlet
+npm run lint --prefix frontend
 """
 
 [tasks.format]
-description = "Format backend (ruff) and both frontend-arenas (prettier)"
+description = "Format backend (ruff) and frontend (prettier)"
 run = """
 uv run ruff format . --project backend
-npm run format --prefix frontend-arena
-npm run format --prefix frontend-gauntlet
+npm run format --prefix frontend
 """
 
 # ── Test ──────────────────────────────────────────────────────

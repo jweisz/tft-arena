@@ -1,8 +1,7 @@
 name: tft-arena
 
 # Usage:
-#   docker compose --profile tft watch      → backend + TFT frontend
-#   docker compose --profile gauntlet watch  → backend + Gauntlet frontend
+#   docker compose watch      → backend + frontend
 #
 # File sync keeps running containers up to date:
 #   Backend:  Python files synced → uvicorn --reload picks them up
@@ -33,10 +32,9 @@ services:
         - action: rebuild
           path: ./backend/uv.lock
 
-  frontend-arena:
-    profiles: [tft]
+  frontend:
     build:
-      context: ./frontend-arena
+      context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
@@ -45,30 +43,13 @@ services:
     develop:
       watch:
         - action: sync
-          path: ./frontend-arena/src
+          path: ./frontend/src
           target: /app/src
         - action: sync
-          path: ./frontend-arena/public
+          path: ./frontend/public
           target: /app/public
         - action: rebuild
-          path: ./frontend-arena/package.json
-
-  gauntlet:
-    profiles: [gauntlet]
-    build:
-      context: ./frontend-gauntlet
-      dockerfile: Dockerfile.dev
-    ports:
-      - "5174:5174"
-    depends_on:
-      - backend
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend-gauntlet/src
-          target: /app/src
-        - action: rebuild
-          path: ./frontend-gauntlet/package.json
+          path: ./frontend/package.json
 
 volumes:
   tft_arena_data:
